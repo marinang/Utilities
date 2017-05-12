@@ -56,4 +56,7 @@ def Efficiency(tree_total,selection=''):
 
     uncertainty = float(math.sqrt((M * (N - M))/math.pow(N,3)))
     
+    destruct_object(tree_passed)
+    
     return {"efficiency":efficiency, "error":uncertainty, "Nbefore":N, "Nafter":M}
+
