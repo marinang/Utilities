@@ -13,42 +13,17 @@ import os
 import math
 import numpy as np
 from root_numpy import array2tree, tree2array, root2array, array2root
-from rootpy.tree import TreeChain
 
 
-def readTree(file,selection='',treename='DecayTree',fraction=1):
-    #doesn't work if a TFile is open
-    if not file:
-        raise ValueError('No file!!!')
-    if not isinstance(file,(list,tuple)):
-        file = [file]
-    chain = ROOT.TChain(treename)
-#    chain = TreeChain(treename,file)
-    for file in file:
-        if not os.path.isfile(file):
-            #doesn't like path with $HOME for example
-            continue
-        chain.AddFile(file)
-    tree = chain.CopyTree(selection)
+def readTree(file,selection='',treename='DecayTree',fraction=1,branches=None):
+    
+    tree_array = root2array(file,treename,branches,selection)
+            
+    if not fraction == 1:
+        nEvts = int(len(tree_array)*fraction)
+        tree_array = np.random.choice(tree_array,nEvts)
         
-    if fraction == 1:
-        return tree
-    else:
-        return FracOfTree(tree,fraction)
-    
-    
-def FracOfTree(tree,fraction=1):
-    
-    nEvts = tree.GetEntries()
-    new_nEvts = int(nEvts*fraction)
-    
-    array = tree2array(tree)
-    array = np.random.choice(array,new_nEvts)
-    
-    new_tree = array2tree(array,name=tree.GetName())
-    destruct_object(tree)
-    
-    return new_tree
+    return array2tree(tree_array,name=treename)
     
 def makeTree(files,treename,fileoutput,selection='',fraction=1.0,branches=None):
     
