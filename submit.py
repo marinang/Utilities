@@ -29,18 +29,17 @@ def getAliveNode() :
 
 def launch_interactive(dirname) :
 
-    print "Searching for an alive node..."
+    print("Searching for an alive node...")
     node, out = getAliveNode()
-    print "Submitting to ", node
+    print("Submitting to ", node)
     os.system('ssh -o StrictHostKeyChecking=no %s "cd ' % node + dirname  + '; chmod +x run.sh ; ./run.sh" &')
-    print "Start: ", datetime.now()
+    print("Start: ", datetime.now())
 
 ## Main
 
 if __name__ == "__main__" :
 
     jobdir = os.getenv("JOBDIR")
-    print jobdir
     if jobdir is None :
         jobdir = os.getenv("HOME")+"/jobs"
         os.system("mkdir -p "+jobdir)
@@ -79,7 +78,7 @@ if __name__ == "__main__" :
     exe, execname = None, None
     commands = opts.command.split(' ')
 
-    if(len(commands) < 1) : print "Not enough arguments"
+    if(len(commands) < 1) : print("Not enough arguments")
     elif "." in commands[0] : 
         execname = commands[0].replace('./','')
         args = commands[1:]
@@ -110,7 +109,7 @@ if __name__ == "__main__" :
     if '/' not in execname :
         os.system("cp " + execname + " " + copyto )
     else :
-        print "Executable is a path. If you used all absolute paths the jobs will work anyway."
+        print("Executable is a path. If you used all absolute paths the jobs will work anyway.")
     
     for arg in opts.infiles.split() :
         os.system("cp " + arg + " " + copyto )
@@ -145,7 +144,7 @@ if __name__ == "__main__" :
         opts.subdir=(re.sub("^.*/","",opts.subdir)+"_")
     
     if opts.local :                           ## Local
-        print "Running local"
+        print("Running local")
         os.system( "cd " + dirname )
         os.system( dirname + "/run.sh &" )
 
@@ -181,6 +180,6 @@ if __name__ == "__main__" :
         os.system(cmd)
 
     else :
-        print "Can run in batch mode only on lxplus or the EPFL cluster. Go there or run with '--local'"
+        print("Can run in batch mode only on lxplus or the EPFL cluster. Go there or run with '--local'")
 
 
