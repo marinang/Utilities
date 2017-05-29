@@ -7,6 +7,9 @@ from __future__ import division
 import ROOT
 from Tree import readTree
 from array import *
+from root_numpy import root2array, tree2array, fill_hist
+import numpy as np
+from rootpy.plotting import Hist
 
 class BinningScheme:
     
@@ -149,7 +152,30 @@ def InputFile(file,selection,treename,debug=False):
         return file.CopyTree(selection)
     else:
         print " Error, no valid TFile nor Ttree provided! Check the name, treename etc ... "
+        
+def NpGetHist(input,variable,nbins,xmin,xmax,name="",selection="",weights=None,scale=1):
+    
+    scale = float(1 / scale)
+    
+    if isinstance(input,str) and (".root" in input):
+        array = root2array(input,treename,variable,selection) * scale
+    elif isinstance(input,np.ndarray):
+        if isinstance(input.dtype.names,tuple):
+            array = input[variable] * scale
+        else:
+            array = input * scale
+    elif isinstance(input,ROOT.TTree):
+        array = tree2array(input,variable,selection) * scale
 
+    if name == "":
+        name = variable
+
+    hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
+
+    fill_hist(hist,array)
+    
+    return hist
+    
 def GetHist(variable,file,name,selection = '',treename='DecayTree',weight_var = '',name_opt=0,scale=1,debug=False):
     
     #variable is a dictionnary of a list of dictionnaries
@@ -231,19 +257,3 @@ def AddHists(hists,name):
     histogram.SetNameTitle(name,name)
     return histogram
 
-"""
-def scaleUnits(unit,scale=1):
-    
-    new_unit=''
-    
-    if scale == 1:
-        new_unit = unit
-    
-    #works with *eV:
-    elif 'eV' in unit:
-        if 'M' in unit:
-            if scale == 1E-3:
-                new_unit = unit.replace('M','G')
-
-    return new_unit
-"""
