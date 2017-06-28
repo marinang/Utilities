@@ -53,4 +53,18 @@ def Efficiency(tree_total,selection=''):
     destruct_object(tree_passed)
     
     return {"efficiency":efficiency, "error":uncertainty, "Nbefore":N, "Nafter":M}
+    
+def NEfficiency(array_total,array_selection):
+    
+    number_total = len(array_total)
+    number_passed = len(array_selection)
+    
+    efficiency = float(number_passed/number_total)
+    
+    M = number_passed
+    N = number_total
+
+    uncertainty = float(math.sqrt((M * (N - M))/math.pow(N,3)))
+    
+    return {"efficiency":efficiency, "error":uncertainty, "Nbefore":N, "Nafter":M}
 

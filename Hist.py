@@ -65,48 +65,67 @@ class BinningScheme:
         bins = [i*scale for i in self.Bins]
         return array('d', bins)
         
+    def ReturnBins(self,scale=1):
+        
+        bins = [i*scale for i in self.Bins]
+        return bins
+        
     def nBins(self):
         
         return len(self.Bins) - 1
         
 class EffHist(ROOT.TH1F):
     
-    def __init__(self, name, variable):
+    def __init__(self, name, variable, scale=1, **kwargs):
+        
+        if len(kwargs) == 3 and any("nbins" in k for k in kwargs.keys()):
+            nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
+            ROOT.TH1F.__init__(self,name,name,nbins,xmin*scale,xmax*scale)
+            self.bin_scheme = None
+            self.nbins = nbins
+            self.xmin = xmin
+            self.xmax = xmax
+            
+        elif len(kwargs) == 1 and any("bin_scheme" in k for k in kwargs.keys()):
+            bin_scheme = kwargs["bin_scheme"]
+            ROOT.TH1F.__init__(self,name,name,bin_scheme.nBins(),bin_scheme.ReturnArray(scale))
+            self.bin_scheme = bin_scheme
+            self.nbins = None
+            self.xmin = None
+            self.xmax = None
         
         self.var = variable
-        bin_scheme  = variable.get('BinningScheme','')
-        self.NAME = variable.get('Name','')
-        NBINS = variable.get('nBins','')
-        XMIN = variable.get('xMin','')
-        XMAX = variable.get('xMax','')
-        self.SCALE = variable.get('scale',1)
+        self.name = name
+        self.scale = scale
         self.Yaxis_name = "Efficiency"
         self.Xaxis_name = ""
-        
-        
-        if isinstance(bin_scheme, BinningScheme) and (XMIN == '') and (XMAX == '') and (NBINS == ''):
-            ROOT.TH1F.__init__(self,name,name,bin_scheme.nBins(),bin_scheme.ReturnArray(self.SCALE))
-        else:
-            ROOT.TH1F.__init__(self,name,name,NBINS,XMIN*self.SCALE,XMAX*self.SCALE)
-        
         self.hist_passed = None
         self.hist_total = None
         self.selection = ""
-        self.file = ""
+        self.input = ""
         
+    def addInput(self, input):
+        #input tree with the events
+        self.input = input
         
-    def addFile(self,file,selection="",treename="DecayTree"):
-        #input file with the events
-        self.file = InputFile(file, selection, treename)
+    def AddHists(self, hist_total, hist_passed):
+        
+        self.hist_total = hist_total
+        self.hist_passed = hist_passed
+        
+        self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
+        self.Sumw2()
 
-    def addSelection(self,selection):
-        #Efficiency is computed using this selection
+    def addSelection(self, selection):
         
         self.selection = selection
-        
-        self.hist_total = GetHist(self.var,self.file,self.NAME+"_Total",treename='DecayTree',scale=self.SCALE)
-        
-        self.hist_passed = GetHist(self.var,self.file,self.NAME+"_Total",selection=self.selection,treename='DecayTree',scale=self.SCALE)
+                
+        if self.bin_scheme:
+            self.hist_total = GetHist(self.input, self.var, self.name+"_Total", scale=self.scale, bin_scheme=self.bin_scheme)
+            self.hist_passed = GetHist(self.input, self.var, self.name+"_Passed", selection=self.selection, scale=self.scale, bin_scheme=self.bin_scheme)
+        else:
+            self.hist_total = GetHist(self.input, self.var, self.name+"_Total", scale=self.scale, nbins=self.nbins, xmin=self.xmin, xmax=self.xmax)
+            self.hist_passed = GetHist(self.input, self.var, self.name+"_Passed", selection=self.selection, scale=self.scale, nbins=self.nbins, xmin=self.xmin, xmax=self.xmax)
         
         self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
         self.Sumw2()
@@ -118,12 +137,12 @@ class EffHist(ROOT.TH1F):
         gr.SetName(self.GetName()+" ")
         gr.GetYaxis().SetTitle(self.Yaxis_name)
         if self.Xaxis_name == "":
-            gr.GetXaxis().SetTitle(self.var['Name'] + ' ' + self.var.get('Units',''))
+            gr.GetXaxis().SetTitle(self.variable)
         else:
             gr.GetXaxis().SetTitle(self.Xaxis_name)
         return gr
     
-def InputFile(file,selection,treename,debug=False):
+def InputFile(file, selection, treename, debug=False):
     
     File = False
     Tree = False
@@ -153,97 +172,47 @@ def InputFile(file,selection,treename,debug=False):
     else:
         print " Error, no valid TFile nor Ttree provided! Check the name, treename etc ... "
         
-def NpGetHist(input,variable,nbins,xmin,xmax,name="",selection="",weights=None,scale=1):
+def GetHist(input, variable, name="", selection="", treename='DecayTree', weights=None, scale=1, **kwargs):
+    
+    #1 nbins, xmin, xmax
+    #2 BinningScheme
+    
+    if name == "":
+        name = variable
+    
+    if len(kwargs) == 3 and any("nbins" in k for k in kwargs.keys()):
+        nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
+        hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
+    elif len(kwargs) == 1 and any("bin_scheme" in k for k in kwargs.keys()):
+        bin_scheme = kwargs["bin_scheme"]
+        hist = Hist(bin_scheme.ReturnBins(scale),name=name,title=name,type='F')
     
     scale = float(1 / scale)
     
+    if weights:
+        branches = [variable,weights]
+    else:
+        branches = variable
+    
     if isinstance(input,str) and (".root" in input):
-        array = root2array(input,treename,variable,selection) * scale
+        array = root2array(input,treename,branches,selection)
     elif isinstance(input,np.ndarray):
         if isinstance(input.dtype.names,tuple):
-            array = input[variable] * scale
+            array = input[branches]
         else:
-            array = input * scale
+            array = input
     elif isinstance(input,ROOT.TTree):
-        array = tree2array(input,variable,selection) * scale
-
-    if name == "":
-        name = variable
-
-    hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
-
-    fill_hist(hist,array)
+        array = tree2array(input,branches,selection)
+    
+    if weights:
+        fill_hist(hist,array[variable]*scale,array[weights])
+    else:
+        fill_hist(hist,array*scale)
     
     return hist
     
-def GetHist(variable,file,name,selection = '',treename='DecayTree',weight_var = '',name_opt=0,scale=1,debug=False):
-    
-    #variable is a dictionnary of a list of dictionnaries
-    #ex: muE = {'Name':'mu_plus_PE', 'xMin':550, 'xMax':1000000,  'nBins':100, 'Units':'MeV'}
-    #of course if it's a list, all variables are compatible i.e can be added together
-    #name_opt = 1 give the name of the histogram for the X axis
-    
-    if not isinstance(variable,(list,tuple)):
-        variable = [variable]
-    
-    hists = []
 
-    tree = InputFile(file,selection,treename,debug)
-
-    nEvts= tree.GetEntries()
-
-    scale = float(1 / scale)
-
-    for var in variable:
-        
-        bin_scheme  = var.get('BinningScheme','')
-        NAME = var.get('Name','')
-        NBINS = var.get('nBins','')
-        XMIN = var.get('xMin','')
-        XMAX = var.get('xMax','')
-        
-        if isinstance(bin_scheme, BinningScheme) and (XMIN == '') and (XMAX == '') and (NBINS == ''):
-            hist  = ROOT.TH1F(NAME,NAME,bin_scheme.nBins(),bin_scheme.ReturnArray(scale))
-        else:
-            hist  = ROOT.TH1F(NAME,NAME,NBINS,XMIN*scale,XMAX*scale)
-        
-        hist.Sumw2()
-        #unit = scaleUnits(var['Units'],scale)
-        unit = var.get('Units','')
-        
-        hist.GetXaxis().SetTitle(var['Name'] + ' ' + unit)
-        hist.GetYaxis().SetTitle('Events')
-        hist.GetYaxis().SetTitleOffset(1.15)
-        
-        if name_opt == 0:
-            hist.GetXaxis().SetTitle(var['Name'] + ' ' + unit)
-        elif name_opt == 1:
-            hist.GetXaxis().SetTitle(name + ' ' + unit)
-        
-        hists.append(hist)
-    
-    
-    for i in xrange(nEvts):
-        
-        tree.GetEntry(i)
-        for hist in hists:
-            value = tree.GetLeaf(hist.GetName()).GetValue()
-            if 'DIRA' in var:
-                value = math.acos(value)
-            if weight_var == '':
-                hist.Fill(value*scale)
-            else:
-                w = tree.GetLeaf(weight_var).GetValue()
-                hist.Fill(value*scale,w)
-                
-                
-    return AddHists(hists,name)
-    
-    destruct_object(tree)
-
-
-
-def AddHists(hists,name):
+def AddHists(hists, name):
     
     for hist in hists:
         if hist == hists[0]:
