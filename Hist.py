@@ -108,7 +108,7 @@ class EffHist(ROOT.TH1F):
         #input tree with the events
         self.input = input
         
-    def AddHists(self, hist_total, hist_passed):
+    def addHists(self, hist_total, hist_passed):
         
         self.hist_total = hist_total
         self.hist_passed = hist_passed
