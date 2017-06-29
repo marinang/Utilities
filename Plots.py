@@ -6,204 +6,296 @@
 import ROOT
 import glob
 import os
-from Hist import EffHist
 
-def DecorateHists(stack, filled=False, legend=None, normalized=False, err=False, candle=False):
+import sys
+sys.path.append('home/marinang/packages/anaconda2/lib/python2.7/site-packages')
+
+from Hist import EffHist
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import rootpy.plotting.root2matplotlib as rplt
+
+
+def LHCbStyle():
     
-    if not isinstance(stack,(list,tuple)):
-        stack = [stack]
+    STYLE = {}
+
+    STYLE['figure.figsize'] = 8.75, 5.92
+    STYLE['figure.dpi'] = 1000
+
+    STYLE['font.family'] = 'sans-serif'
+    STYLE['font.serif'] =  'Times New Roman'
+    STYLE['font.size'] =   2
+    STYLE['font.weight'] = 200
+
+    STYLE['legend.frameon'] = False
+    STYLE['legend.handletextpad'] = 0.3
+    STYLE['legend.numpoints'] =     1
+    STYLE['legend.labelspacing'] =  0.3
+    STYLE['legend.fontsize'] =      17
+
+    STYLE['lines.linewidth'] =       1.4
+    STYLE['lines.markeredgewidth'] = 1.4
+    STYLE['lines.markersize'] =      8
+
+    STYLE['savefig.bbox'] = 'tight'
+    STYLE['savefig.pad_inches'] = 0.1
     
-    new_stack = []
+    STYLE['axes.labelsize'] = 20
+    STYLE['axes.linewidth'] = 1
+
+    STYLE['xtick.major.size'] =  11
+    STYLE['xtick.minor.size'] =  6
+    STYLE['xtick.major.width'] = 1.2
+    STYLE['xtick.minor.width'] = 1.2
+    STYLE['xtick.major.pad'] =   10
+    STYLE['xtick.minor.pad'] =   10
+    STYLE['xtick.labelsize'] =   17
+
+    STYLE['ytick.major.size'] =  11
+    STYLE['ytick.minor.size'] =  6
+    STYLE['ytick.major.width'] = 1.2
+    STYLE['ytick.minor.width'] = 1.2
+    STYLE['ytick.major.pad'] =   10
+    STYLE['ytick.minor.pad'] =   10
+    STYLE['ytick.labelsize'] =   17
     
-    for h in stack:
+    for k, v in STYLE.iteritems():
+            mpl.rcParams[k] = v
+    
+def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candle=False, MPL=False):
+    
+    
+    if not isinstance(Objs,(list,tuple)):
+        Objs = [Objs]
+            
+    new_Objs = []
+    
+    for h in Objs:
         if isinstance(h, EffHist):
-            gr = h.return_TGraphAsymmErrors()
-            new_stack.append(gr)
+            gr = h.return_TGraphAsymmErrors(MPL)
+            new_Objs.append(gr)
         else:
-            new_stack.append(h)
-    stack = new_stack 
+            new_Objs.append(h)
+    Objs = new_Objs 
     
-    if legend:
-        leg = ROOT.TLegend(legend)
+    if Legend:
+        leg = ROOT.TLegend(Legend)
     else:
-        leg = legend
+        leg = Legend
               
     i = 2
-    for hist in stack:
+    for obj in Objs:
+        name_leg = "#bf{"+obj.GetTitle()+"}"
+        if MPL:
+            obj.SetLineWidth(1)
+        else:
+            obj.SetLineWidth(1)
         
-        name_leg = "#bf{"+hist.GetTitle()+"}"
-        
-        hist.SetLineWidth(1)
-        if hist == stack[0]:
-            hist.SetLineColor(4)
+        if obj == Objs[0]:
+            obj.SetLineColor(4)
             
             #first variable
-            if filled == True:
-                hist.SetFillColor(38)
-                if legend:
-                    leg.AddEntry(hist,name_leg,"f")
-            elif (candle == True) or isinstance(hist, ROOT.TGraphAsymmErrors) or (err == True):
-                hist.SetLineWidth(2)
-                hist.SetMarkerColor(4)
-                hist.SetMarkerStyle(8)
-                hist.SetMarkerSize(0.8)
-                if legend:
-                    leg.AddEntry(hist,name_leg,"lep")
+            if Filled == True:
+                obj.SetFillColor(38)
+                if Legend:
+                    leg.AddEntry(obj,name_leg,"f")
+            elif (Candle == True) or isinstance(obj, ROOT.TGraphAsymmErrors) or (Err == True):
+                obj.SetLineWidth(2)
+                obj.SetMarkerColor(4)
+                obj.SetMarkerStyle(8)
+                obj.SetMarkerSize(0.8)
+                if Legend:
+                    leg.AddEntry(obj,name_leg,"lep")
             else:
-                if legend:
-                    leg.AddEntry(hist,name_leg,"l")
-
+                if Legend:
+                    leg.AddEntry(obj,name_leg,"l")
         else:
             if i == 4:
                 i = i + 2
-            hist.SetLineColor(i)
-            if (candle == True) or isinstance(hist, ROOT.TGraphAsymmErrors) or (err == True):
-                hist.SetLineWidth(2)
-                hist.SetMarkerColor(i)
-                hist.SetMarkerStyle(8)
-                hist.SetMarkerSize(0.8)
-                if legend:
-                    leg.AddEntry(hist,name_leg,"lep")
+            obj.SetLineColor(i)
+            if (Candle == True) or isinstance(obj, ROOT.TGraphAsymmErrors) or (Err == True):
+                obj.SetLineWidth(2)
+                obj.SetMarkerColor(i)
+                obj.SetMarkerStyle(8)
+                obj.SetMarkerSize(0.8)
+                if Legend:
+                    leg.AddEntry(obj,name_leg,"lep")
             else:
-                if legend:
-                    leg.AddEntry(hist,name_leg,"l")
+                if Legend:
+                    leg.AddEntry(obj,name_leg,"l")
             i = i + 1
         
-        if normalized == True:
-            
-            hist.Scale(1./hist.Integral())
-            hist.GetYaxis().SetTitle('Normalized Distribution')
+        if Normalized:
+            obj.Scale(1./obj.Integral())
+            obj.GetYaxis().SetTitle('Normalized Distribution')
                 
-    dict = {'hists':stack, 'leg':leg}
+    Dict = {'objs':Objs, 'leg':leg}
 
-    return dict
+    return Dict
 
 
-def DrawHists(dict, logy=False, err=False, candle=False, minY=-999999, maxY=999999):
+def Draw(Dict, Logy=False, Err=False, Candle=False, minY=-999999, maxY=999999):
 
-    stack,leg = dict.get('hists'),dict.get('leg')
+    Objs,leg = Dict.get('objs'),Dict.get('leg')
     
     if minY == -999999:
-        minY = min([h.GetMinimum() for h in stack])
+        minY = min([h.GetMinimum() for h in Objs])
     if maxY == 999999:
-        maxY = 1.12*max([h.GetMaximum() for h in stack])
+        maxY = 1.12*max([h.GetMaximum() for h in Objs])
+
+    for obj in Objs:
         
-    for hist in stack:
-    
-        if hist == stack[0]:
-            if candle == True:
-                hist.Draw('CANDLE')
-            elif isinstance(hist, ROOT.TGraphAsymmErrors):
-                hist.Draw('AP')
-            elif err == False:
-                hist.Draw('hist')
+        if obj == Objs[0]:
+            if Candle == True:
+                obj.Draw('Candle')
+            elif isinstance(obj, ROOT.TGraphAsymmErrors):
+                obj.Draw('AP')
+            elif Err == False:
+                obj.Draw('hist')
             else:
-                hist.Draw('E1')
-            if not isinstance(hist, ROOT.TGraphAsymmErrors):
-                if logy == True:
+                obj.Draw('E1')
+            if not isinstance(obj, ROOT.TGraphAsymmErrors):
+                if Logy == True:
                     minY = 0.0005
                     maxY = 1.3*maxY
-            hist.SetMaximum(maxY)
-            hist.SetMinimum(minY)
+            obj.SetMaximum(maxY)
+            obj.SetMinimum(minY)
                     
         else:
-            if candle == True: 
-                hist.Draw('SAME')
-            elif isinstance(hist, ROOT.TGraphAsymmErrors):
-                hist.Draw('P')
-            elif err == False:
-                hist.Draw('histsame')
+            if Candle == True: 
+                obj.Draw('SAME')
+            elif isinstance(obj, ROOT.TGraphAsymmErrors):
+                obj.Draw('P')
+            elif Err == False:
+                obj.Draw('histsame')
             else:
-                hist.Draw('E1same')
+                obj.Draw('E1same')
 
     if leg:
         leg.Draw()
-
-
-def plotVariables(stack, folder, file_name, filled=False, legend=None, normalized=False, logy=False, err=False, candle=False, minY=-999999, maxY=999999):
-    
-    cdata = ROOT.TCanvas()
-    
-    hl = DecorateHists(stack,filled,legend,normalized,err,candle)
-
-    DrawHists(hl,logy,err,candle,minY,maxY)
-
-    if logy == True:
-         cdata.SetLogy(logy)
-    
-    if not os.path.isdir(os.path.join('images',folder)):
-        os.mkdir( os.path.join('images',folder))
-    cdata.SaveAs(os.path.join('images',folder,file_name) )
-    cdata.Close()
-    
-    
-def TwoScales(stack1, stack2, folder, file_name, legend=None, err=False):
-
-    if not isinstance(stack1,(list,tuple)):
-        stack1 = [stack1]
         
-    if not isinstance(stack2,(list,tuple)):
-        stack2 = [stack2]
+def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None,minY=-999999, maxY=999999):
 
-
-    cdata = ROOT.TCanvas()
-    maxY1  = []
-    maxY2  = []
+    Objs = Dict.get('objs')
     
-    pad1 = ROOT.TPad("pad1","",0,0,1,1)
-    pad2 = ROOT.TPad("pad2","",0,0,1,1)
-    pad2.SetFillStyle(4000) #will be transparent
-    pad2.SetFrameFillStyle(0)
-
-    hl = DecorateHists(stack1+stack2,legend=legend,err=err)
-    hl1 = {'hists':hl['hists'][0:len(stack1)], 'leg':None}
-    hl2 = {'hists':hl['hists'][len(stack1):], 'leg':None}
-      
-    pad1.Draw()
-    pad1.cd()
-      
-    DrawHists(hl2,err=err)
-   
-    pad1.Update()
-    cdata.cd()
-    
-    maxY2 = [hist.GetMaximum() for hist in hl1['hists']]
-    rightmax = 1.12*max(maxY2)
-    scale = ROOT.gPad.GetUymax()/rightmax
-    
-    pad2.Draw()
-    pad2.cd()
-    
-    for hist in hl1['hists']:
+    if minY == -999999:
+        minY = min([h.GetMinimum() for h in Objs])
+    if maxY == 999999:
+        maxY = 1.12*max([h.GetMaximum() for h in Objs])
+    if Logy:
+        minY = 0.0005
+        maxY = 1.3*maxY
         
-#        hist = hist.GetHistogram()
-#        print(hist)
-        
-        hist.Scale(scale)
-        
-#        if isinstance(hist, ROOT.TGraphAsymmErrors):
-#            h = hist.GetHistogram()
-#            h.Scale(scale)
-#            h.SetAxisRange(-130,300,"X")
-#            h.Draw('E1sameY+') 
-##            .Draw('PY-')
-        if err == False:
-            hist.Draw('histsameY+')
-        else:
-            hist.Draw('E1sameY+') 
+    if not Xlabel:
+        Xlabel = Objs[0].GetName()
+    if not Ylabel:
+        Ylabel = ""
 
-        hist.SetMaximum(1.12*max(maxY2))
-        hist.SetMinimum(0)
-
-    pad2.Update() 
-    cdata.cd()   
+    for obj in Objs:
+        
+        if Err or isinstance(obj, ROOT.TGraphAsymmErrors):
+            axes.set_xlabel(Xlabel, ha='right', x=1)
+            axes.set_ylabel(Ylabel, ha='right', y=1)
+            if Logy:
+                axes.set_yscale("log", nonposy='clip')
+            rplt.errorbar(obj,axes=axes,emptybins=False)
+        
+        if isinstance(obj, ROOT.TH1F):
+            axes.set_xlabel(Xlabel, ha='right', x=1)
+            axes.set_ylabel("Events", ha='right', y=1)
+            rplt.hist(obj,Objsed=False,axes=axes,logy=Logy)
+            
+    axes.set_ylim(minY,maxY)
     
-    if legend:
-        legend.Draw()
+    if Legend:
+        leg = plt.Legend(loc='best')
+            
+    
+def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=False, Logy=False, Err=False, MPL=False, Xlabel=None, Ylabel=None, minY=-999999, maxY=999999):
+    
+    hl = Decorate(Objs,Filled,Legend,Normalized,Err,MPL=MPL)
+    
+    if not os.path.isdir(os.path.join('images',Folder)):
+        os.mkdir( os.path.join('images',Folder))
+    
+    if not MPL:
+    
+        cdata = ROOT.TCanvas()
+        Draw(hl,Logy,Err,Candle,minY,maxY)
 
+        if Logy == True:
+            cdata.SetLogy(Logy)
+        
+        cdata.SaveAs(os.path.join('images',Folder,FileName) )
+        cdata.Close()
+        
+    else:
+        
+        LHCbStyle()
+        fig = plt.figure()
+        axes = plt.axes()
+        
+        DrawMPL(hl,axes,Logy,Err,Legend,Xlabel,Ylabel,minY,maxY)
+        plt.minorticks_on()
+        
+        fig.savefig(os.path.join('images',Folder,FileName))
+        print("Figure {0} has been created".format(os.path.join('images',Folder,FileName)))  
+    
+    
+def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
+    
+    LHCbStyle()
+    
+    if not isinstance(Hists,(list,tuple)):
+        Hists = [Hists]
+        
+    if not isinstance(Effs,(list,tuple)):
+        Effs = [Effs]
+        
+    hl = Decorate(Hists+Effs,MPL=True)
+    hl1 = hl['objs'][0:len(Hists)]
+    hl2 = hl['objs'][len(Hists):]
 
-    if not os.path.isdir(os.path.join('images',folder)):
-        os.mkdir( os.path.join('images',folder))
-    cdata.SaveAs(os.path.join('images',folder,file_name) )
-    cdata.Close()
+    fig, ax1 = plt.subplots()
+            
+    rplt.hist(hl1, Objsed=False, axes=ax1)
+    ax1.set_xlabel(Xlabel, ha='right', x=1)
+    ax1.set_ylabel("Events", ha='right', y=1)
+    
+    ax2 = ax1.twinx()
+        
+    rplt.errorbar(hl2, axes=ax2, emptybins=False)
+    ax2.set_ylabel("Efficiency", ha='right', y=1)
+    
+    if "y2_min" in kwargs.keys() and "y2_max" in kwargs.keys():
+        ax2.set_ylim(kwargs["y2_min"],kwargs["y2_maxs"])
+    elif "y2_min" in kwargs.keys() and not "y2_max" in kwargs.keys():
+        ax2.set_ylim(kwargs["y2_min"],1)
+    elif not "y2_min" in kwargs.keys() and "y2_max" in kwargs.keys():
+        ax2.set_ylim(0.0,kwargs["y2_max"])
+
+    plt.minorticks_on()
+    
+    import matplotlib.patches as mpatches
+    
+    patch = []
+    for h in hl1:
+        patch.append(mpatches.Patch(edgecolor=h.GetLineColor('mpl'), facecolor="none", linewidth=h.GetLineWidth()))
+    
+    if Legend:
+        h1, l1 = ax1.get_Legend_handles_labels()
+        h2, l2 = ax2.get_Legend_handles_labels()
+        ax1.Legend(patch+h2, l1+l2, loc='best')
+    
+        
+    #fig.tight_layout()
+        
+    plt.minorticks_on()
+    
+    if not os.path.isdir(os.path.join('images',Folder)):
+        os.mkdir( os.path.join('images',Folder))
+    fig.savefig(os.path.join('images',Folder,FileName))
+    print("Figure {0} has been created".format(os.path.join('images',Folder,FileName)))    
+    
 

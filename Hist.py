@@ -9,7 +9,10 @@ from Tree import readTree
 from array import *
 from root_numpy import root2array, tree2array, fill_hist
 import numpy as np
-from rootpy.plotting import Hist
+
+import sys
+sys.path.append('home/marinang/packages/anaconda2/lib/python2.7/site-packages')
+from rootpy.plotting import Hist, Graph
 
 class BinningScheme:
     
@@ -26,7 +29,6 @@ class BinningScheme:
         
         for j in self.Bins:
             if (j > xmin) and (j<xmax):
-                print j
                 overlap = True
                 break
             elif j == xmin:
@@ -130,16 +132,27 @@ class EffHist(ROOT.TH1F):
         self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
         self.Sumw2()
         
-    def return_TGraphAsymmErrors(self):
+    def return_TGraphAsymmErrors(self, MPL=False):
         
         gr = ROOT.TGraphAsymmErrors()
         gr.Divide(self.hist_passed,self.hist_total)
-        gr.SetName(self.GetName()+" ")
-        gr.GetYaxis().SetTitle(self.Yaxis_name)
+
         if self.Xaxis_name == "":
             gr.GetXaxis().SetTitle(self.variable)
         else:
             gr.GetXaxis().SetTitle(self.Xaxis_name)
+            
+        if MPL:
+            gr = Graph(gr)
+            gr.name = self.GetName()
+            gr.title = self.GetTitle()
+        else:
+            gr.SetName(self.GetName()+" ")
+            gr.SetTitle(self.GetTitle()+" ")
+            gr.GetYaxis().SetTitle(self.Yaxis_name)
+            gr.SetMinimum(self.GetMinimum()-0.1)
+            gr.SetMaximum(self.GetMaximum()+0.1)
+
         return gr
     
 def InputFile(file, selection, treename, debug=False):
