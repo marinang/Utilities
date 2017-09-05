@@ -192,15 +192,15 @@ def GetHist(input, variable, name="", selection="", treename='DecayTree', weight
     
     if name == "":
         name = variable
+        
+    scale = float(1 / scale)
     
     if len(kwargs) == 3 and any("nbins" in k for k in kwargs.keys()):
-        nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
+        nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"]*scale, kwargs["xmax"]*scale
         hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
     elif len(kwargs) == 1 and any("bin_scheme" in k for k in kwargs.keys()):
         bin_scheme = kwargs["bin_scheme"]
         hist = Hist(bin_scheme.ReturnBins(scale),name=name,title=name,type='F')
-    
-    scale = float(1 / scale)
     
     if weights:
         branches = [variable,weights]

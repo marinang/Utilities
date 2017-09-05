@@ -7,11 +7,9 @@ import ROOT
 import glob
 import os
 
-import sys
-sys.path.append('home/marinang/packages/anaconda2/lib/python2.7/site-packages')
-
 from Hist import EffHist
 import matplotlib as mpl
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import rootpy.plotting.root2matplotlib as rplt
 
@@ -26,7 +24,8 @@ def LHCbStyle():
     STYLE['font.family'] = 'sans-serif'
     STYLE['font.serif'] =  'Times New Roman'
     STYLE['font.size'] =   2
-    STYLE['font.weight'] = 200
+    STYLE['font.weight'] = 500
+    STYLE['font.style'] = 'normal'
 
     STYLE['legend.frameon'] = False
     STYLE['legend.handletextpad'] = 0.3
@@ -42,20 +41,21 @@ def LHCbStyle():
     STYLE['savefig.pad_inches'] = 0.1
     
     STYLE['axes.labelsize'] = 20
-    STYLE['axes.linewidth'] = 1
+    STYLE['axes.linewidth'] = 1.8
+    STYLE['axes.labelweight'] = 500
 
     STYLE['xtick.major.size'] =  11
     STYLE['xtick.minor.size'] =  6
-    STYLE['xtick.major.width'] = 1.2
-    STYLE['xtick.minor.width'] = 1.2
+    STYLE['xtick.major.width'] = 2
+    STYLE['xtick.minor.width'] = 2
     STYLE['xtick.major.pad'] =   10
     STYLE['xtick.minor.pad'] =   10
     STYLE['xtick.labelsize'] =   17
 
     STYLE['ytick.major.size'] =  11
     STYLE['ytick.minor.size'] =  6
-    STYLE['ytick.major.width'] = 1.2
-    STYLE['ytick.minor.width'] = 1.2
+    STYLE['ytick.major.width'] = 1.8
+    STYLE['ytick.minor.width'] = 1.8
     STYLE['ytick.major.pad'] =   10
     STYLE['ytick.minor.pad'] =   10
     STYLE['ytick.labelsize'] =   17
@@ -64,7 +64,6 @@ def LHCbStyle():
             mpl.rcParams[k] = v
     
 def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candle=False, MPL=False):
-    
     
     if not isinstance(Objs,(list,tuple)):
         Objs = [Objs]
@@ -79,7 +78,7 @@ def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candl
             new_Objs.append(h)
     Objs = new_Objs 
     
-    if Legend:
+    if Legend and not MPL:
         leg = ROOT.TLegend(Legend)
     else:
         leg = Legend
@@ -98,31 +97,33 @@ def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candl
             #first variable
             if Filled == True:
                 obj.SetFillColor(38)
-                if Legend:
+                if Legend and not MPL:
                     leg.AddEntry(obj,name_leg,"f")
             elif (Candle == True) or isinstance(obj, ROOT.TGraphAsymmErrors) or (Err == True):
                 obj.SetLineWidth(2)
                 obj.SetMarkerColor(4)
                 obj.SetMarkerStyle(8)
                 obj.SetMarkerSize(0.8)
-                if Legend:
+                if Legend and not MPL:
                     leg.AddEntry(obj,name_leg,"lep")
             else:
-                if Legend:
+                if Legend and not MPL:
                     leg.AddEntry(obj,name_leg,"l")
         else:
             if i == 4:
                 i = i + 2
+            if i == 10:
+                i = 1
             obj.SetLineColor(i)
             if (Candle == True) or isinstance(obj, ROOT.TGraphAsymmErrors) or (Err == True):
                 obj.SetLineWidth(2)
                 obj.SetMarkerColor(i)
                 obj.SetMarkerStyle(8)
                 obj.SetMarkerSize(0.8)
-                if Legend:
+                if Legend and not MPL:
                     leg.AddEntry(obj,name_leg,"lep")
             else:
-                if Legend:
+                if Legend and not MPL:
                     leg.AddEntry(obj,name_leg,"l")
             i = i + 1
         
@@ -142,7 +143,7 @@ def Draw(Dict, Logy=False, Err=False, Candle=False, minY=-999999, maxY=999999):
     if minY == -999999:
         minY = min([h.GetMinimum() for h in Objs])
     if maxY == 999999:
-        maxY = 1.12*max([h.GetMaximum() for h in Objs])
+        maxY = 1.20*max([h.GetMaximum() for h in Objs])
 
     for obj in Objs:
         
@@ -158,7 +159,7 @@ def Draw(Dict, Logy=False, Err=False, Candle=False, minY=-999999, maxY=999999):
             if not isinstance(obj, ROOT.TGraphAsymmErrors):
                 if Logy == True:
                     minY = 0.0005
-                    maxY = 1.3*maxY
+                    maxY = 1.32*maxY
             obj.SetMaximum(maxY)
             obj.SetMinimum(minY)
                     
@@ -175,72 +176,81 @@ def Draw(Dict, Logy=False, Err=False, Candle=False, minY=-999999, maxY=999999):
     if leg:
         leg.Draw()
         
-def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None,minY=-999999, maxY=999999):
+def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None, minY=-999999, maxY=999999):
 
     Objs = Dict.get('objs')
-    
+
     if minY == -999999:
         minY = min([h.GetMinimum() for h in Objs])
     if maxY == 999999:
-        maxY = 1.12*max([h.GetMaximum() for h in Objs])
+        maxY = 1.48*max([h.GetMaximum() for h in Objs])
     if Logy:
         minY = 0.0005
-        maxY = 1.3*maxY
+        maxY = 2.2*maxY
+        axes.set_yscale("log", nonposx='clip')
         
     if not Xlabel:
-        Xlabel = Objs[0].GetName()
-    if not Ylabel:
-        Ylabel = ""
-
+        Xlabel = Objs[0].GetXaxis().GetTitle()
+ 
+    patch, name = [],[]
     for obj in Objs:
-        
         if Err or isinstance(obj, ROOT.TGraphAsymmErrors):
             axes.set_xlabel(Xlabel, ha='right', x=1)
             axes.set_ylabel(Ylabel, ha='right', y=1)
             if Logy:
                 axes.set_yscale("log", nonposy='clip')
             rplt.errorbar(obj,axes=axes,emptybins=False)
-        
+            h, l = axes.get_legend_handles_labels()
+            patch.append(h[-1])
+            name.append(l[-1])
         if isinstance(obj, ROOT.TH1F):
             axes.set_xlabel(Xlabel, ha='right', x=1)
-            axes.set_ylabel("Events", ha='right', y=1)
-            rplt.hist(obj,Objsed=False,axes=axes,logy=Logy)
+            if not Ylabel:
+                Ylabel = "Events"
+            axes.set_ylabel(Ylabel, ha='right', y=1)
+            rplt.hist(obj,Objsed=False,axes=axes,logy=Logy,linewidth=1.5)
+            h, l = axes.get_legend_handles_labels()
+            patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth()))
+            name.append(l[-1])
             
+    axes.get_yaxis().set_tick_params(direction='in', left=True, right=True)
+    axes.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
+    axes.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
+    axes.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
     axes.set_ylim(minY,maxY)
     
     if Legend:
-        leg = plt.Legend(loc='best')
-            
+        plt.legend(patch, name, loc='best')
     
 def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=False, Logy=False, Err=False, MPL=False, Xlabel=None, Ylabel=None, minY=-999999, maxY=999999):
     
     hl = Decorate(Objs,Filled,Legend,Normalized,Err,MPL=MPL)
+    if Normalized:
+         Ylabel = "Normalized Distribution"
     
     if not os.path.isdir(os.path.join('images',Folder)):
         os.mkdir( os.path.join('images',Folder))
     
     if not MPL:
-    
         cdata = ROOT.TCanvas()
         Draw(hl,Logy,Err,Candle,minY,maxY)
 
         if Logy == True:
             cdata.SetLogy(Logy)
-        
+
         cdata.SaveAs(os.path.join('images',Folder,FileName) )
         cdata.Close()
         
     else:
-        
         LHCbStyle()
-        fig = plt.figure()
-        axes = plt.axes()
-        
+        fig, axes = plt.subplots()
+
         DrawMPL(hl,axes,Logy,Err,Legend,Xlabel,Ylabel,minY,maxY)
         plt.minorticks_on()
         
         fig.savefig(os.path.join('images',Folder,FileName))
-        print("Figure {0} has been created".format(os.path.join('images',Folder,FileName)))  
+        print("Figure {0} has been created".format(os.path.join('images',Folder,FileName))) 
+        plt.close(fig)
     
     
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
@@ -274,21 +284,16 @@ def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
         ax2.set_ylim(kwargs["y2_min"],1)
     elif not "y2_min" in kwargs.keys() and "y2_max" in kwargs.keys():
         ax2.set_ylim(0.0,kwargs["y2_max"])
-
-    plt.minorticks_on()
-    
-    import matplotlib.patches as mpatches
     
     patch = []
     for h in hl1:
         patch.append(mpatches.Patch(edgecolor=h.GetLineColor('mpl'), facecolor="none", linewidth=h.GetLineWidth()))
     
     if Legend:
-        h1, l1 = ax1.get_Legend_handles_labels()
-        h2, l2 = ax2.get_Legend_handles_labels()
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
         ax1.Legend(patch+h2, l1+l2, loc='best')
-    
-        
+
     #fig.tight_layout()
         
     plt.minorticks_on()
