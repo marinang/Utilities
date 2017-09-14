@@ -270,10 +270,10 @@ def Get2DHist(input, variable1, variable2, name="", selection="", treename='Deca
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
         
-    if weights:
-        fill_hist(hist,array[variable]*scale,array[weights])
-    else:
-        fill_hist(hist,array*scale)
+    array[variable1] = array[variable1]*scale1
+    array[variable2] = array[variable2]*scale2
+        
+    fill_hist(hist,array)
     
     return hist
 
