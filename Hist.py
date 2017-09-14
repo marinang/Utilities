@@ -12,7 +12,7 @@ import numpy as np
 
 import sys
 sys.path.append('home/marinang/packages/anaconda2/lib/python2.7/site-packages')
-from rootpy.plotting import Hist, Graph
+from rootpy.plotting import Hist, Graph, Hist2D
 
 class BinningScheme:
     
@@ -112,8 +112,8 @@ class EffHist(ROOT.TH1F):
         
     def addHists(self, hist_total, hist_passed):
         
-        self.hist_total = hist_total
-        self.hist_passed = hist_passed
+        self.hist_total = hist_total.Clone()
+        self.hist_passed = hist_passed.Clone()
         
         self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
         self.Sumw2()
@@ -224,6 +224,57 @@ def GetHist(input, variable, name="", selection="", treename='DecayTree', weight
     
     return hist
     
+def Get2DHist(input, variable1, variable2, name="", selection="", treename='DecayTree', weights=None, scale1=1, scale2=1, **kwargs):
+    
+    #1 nbins, xmin, xmax
+    #2 BinningScheme
+
+    scale = float(1 / scale)
+    
+    if len(kwargs) == 6:
+        if any("nbins1" in k for k in kwargs.keys()) and any("nbins2" in k for k in kwargs.keys()):
+            nbins1, xmin1, xmax1 = kwargs["nbins1"], kwargs["xmin1"]*scale1, kwargs["xmax1"]*scale1
+            nbins2, xmin2, xmax2 = kwargs["nbins2"], kwargs["xmin2"]*scale2, kwargs["xmax2"]*scale2
+            params = [nbins1, xmin1, xmax1, nbins2, xmin2, xmax2]
+        else: raise ValueError()
+    elif len(kwargs) == 4:
+        if any("nbins1" in k for k in kwargs.keys()) and any("bin_scheme2" in k for k in kwargs.keys()):
+            nbins1, xmin1, xmax1 = kwargs["nbins1"], kwargs["xmin1"]*scale1, kwargs["xmax1"]*scale1
+            bin_scheme2 = kwargs["bin_scheme2"]
+            params = [nbins1, xmin1, xmax1, bin_scheme2.ReturnBins(scale2)]
+        elif any("nbins2" in k for k in kwargs.keys()) and any("bin_scheme1" in k for k in kwargs.keys()):
+            nbins2, xmin2, xmax2 = kwargs["nbins2"], kwargs["xmin2"]*scale1, kwargs["xmax2"]*scale2
+            bin_scheme1 = kwargs["bin_scheme1"]
+            params = [bin_scheme1.ReturnBins(scale1), nbins2, xmin2, xmax2]
+        else: raise ValueError()
+    elif len(kwargs) == 2:
+        if any("bin_scheme1" in k for k in kwargs.keys()) and any("bin_scheme2" in k for k in kwargs.keys()):
+            bin_scheme1 = kwargs["bin_scheme1"]
+            bin_scheme2 = kwargs["bin_scheme2"]
+            params = [bin_scheme1.ReturnBins(scale1), bin_scheme2.ReturnBins(scale2)]
+        else: raise ValueError()
+    else: raise ValueError()
+    
+    hist = Hist2D(*params,name=name,title=name,type='F')
+    
+    if weights:
+        branches = [variable1,variable2,weights]
+    else:
+        branches = [variable1,variable2]
+    
+    if isinstance(input,str) and (".root" in input):
+        array = root2array(input,treename,branches,selection)
+    elif isinstance(input,np.ndarray):
+        array = input[branches]
+    elif isinstance(input,ROOT.TTree):
+        array = tree2array(input,branches,selection)
+    
+    if weights:
+        fill_hist(hist,array[variable]*scale,array[weights])
+    else:
+        fill_hist(hist,array*scale)
+    
+    return hist
 
 def AddHists(hists, name):
     
