@@ -270,8 +270,7 @@ def Get2DHist(input, variable1, variable2, name="", selection="", treename='Deca
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
         
-    array[variable1] = array[variable1]*scale1
-    array[variable2] = array[variable2]*scale2
+    array = np.array([array[variable1]*scale1,array[variable2]*scale2]).reshape(len(array),2)
         
     fill_hist(hist,array)
     
