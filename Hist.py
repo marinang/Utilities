@@ -229,7 +229,8 @@ def Get2DHist(input, variable1, variable2, name="", selection="", treename='Deca
     #1 nbins, xmin, xmax
     #2 BinningScheme
 
-    scale = float(1 / scale)
+    scale1 = float(1 / scale1)
+    scale2 = float(2 / scale2)
     
     if len(kwargs) == 6:
         if any("nbins1" in k for k in kwargs.keys()) and any("nbins2" in k for k in kwargs.keys()):
@@ -268,7 +269,7 @@ def Get2DHist(input, variable1, variable2, name="", selection="", treename='Deca
         array = input[branches]
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
-    
+        
     if weights:
         fill_hist(hist,array[variable]*scale,array[weights])
     else:
