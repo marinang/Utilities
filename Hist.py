@@ -7,12 +7,12 @@ from __future__ import division
 import ROOT
 from Tree import readTree
 from array import *
-from root_numpy import root2array, tree2array, fill_hist
+from root_numpy import root2array, tree2array, fill_hist, fill_profile
 import numpy as np
 
 import sys
 sys.path.append('home/marinang/packages/anaconda2/lib/python2.7/site-packages')
-from rootpy.plotting import Hist, Graph, Hist2D
+from rootpy.plotting import Hist, Graph, Hist2D, Profile
 
 class BinningScheme:
     
@@ -224,44 +224,27 @@ def GetHist(input, variable, name="", selection="", treename='DecayTree', weight
     
     return hist
     
-def Get2DHist(input, variable1, variable2, name="", selection="", treename='DecayTree', weights=None, scale1=1, scale2=1, **kwargs):
+def GetProfile(input, variable_x, variable_y, name="", selection="", treename='DecayTree', weights=None, **kwargs):
     
     #1 nbins, xmin, xmax
     #2 BinningScheme
 
-    scale1 = float(1 / scale1)
-    scale2 = float(2 / scale2)
+    scale_x = float(1 / kwargs.get("scale_x",1))
+    scale_y = float(1 / kwargs.get("scale_y",1))
     
-    if len(kwargs) == 6:
-        if any("nbins1" in k for k in kwargs.keys()) and any("nbins2" in k for k in kwargs.keys()):
-            nbins1, xmin1, xmax1 = kwargs["nbins1"], kwargs["xmin1"]*scale1, kwargs["xmax1"]*scale1
-            nbins2, xmin2, xmax2 = kwargs["nbins2"], kwargs["xmin2"]*scale2, kwargs["xmax2"]*scale2
-            params = [nbins1, xmin1, xmax1, nbins2, xmin2, xmax2]
-        else: raise ValueError()
-    elif len(kwargs) == 4:
-        if any("nbins1" in k for k in kwargs.keys()) and any("bin_scheme2" in k for k in kwargs.keys()):
-            nbins1, xmin1, xmax1 = kwargs["nbins1"], kwargs["xmin1"]*scale1, kwargs["xmax1"]*scale1
-            bin_scheme2 = kwargs["bin_scheme2"]
-            params = [nbins1, xmin1, xmax1, bin_scheme2.ReturnBins(scale2)]
-        elif any("nbins2" in k for k in kwargs.keys()) and any("bin_scheme1" in k for k in kwargs.keys()):
-            nbins2, xmin2, xmax2 = kwargs["nbins2"], kwargs["xmin2"]*scale1, kwargs["xmax2"]*scale2
-            bin_scheme1 = kwargs["bin_scheme1"]
-            params = [bin_scheme1.ReturnBins(scale1), nbins2, xmin2, xmax2]
-        else: raise ValueError()
-    elif len(kwargs) == 2:
-        if any("bin_scheme1" in k for k in kwargs.keys()) and any("bin_scheme2" in k for k in kwargs.keys()):
-            bin_scheme1 = kwargs["bin_scheme1"]
-            bin_scheme2 = kwargs["bin_scheme2"]
-            params = [bin_scheme1.ReturnBins(scale1), bin_scheme2.ReturnBins(scale2)]
+    if len(kwargs) == 5:
+        if any("nbins" in k for k in kwargs.keys()):
+            nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"]*scale_x, kwargs["xmax"]*scale_x
+            params = [nbins, xmin, xmax]
         else: raise ValueError()
     else: raise ValueError()
     
-    hist = Hist2D(*params,name=name,title=name,type='F')
-    
+    hist = Profile(*params,name=name,title=name)
+        
     if weights:
-        branches = [variable1,variable2,weights]
+        branches = [variable_x,variable_y,weights]
     else:
-        branches = [variable1,variable2]
+        branches = [variable_x,variable_y]
     
     if isinstance(input,str) and (".root" in input):
         array = root2array(input,treename,branches,selection)
@@ -270,10 +253,53 @@ def Get2DHist(input, variable1, variable2, name="", selection="", treename='Deca
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
         
-    array = np.array([array[variable1]*scale1,array[variable2]*scale2]).reshape(len(array),2)
+    variable_x = array[variable_x]*scale_x
+    variable_y = array[variable_y]*scale_y
         
-    fill_hist(hist,array)
+    array = np.zeros((len(array),2))
+    array[:,0] = variable_x
+    array[:,1] = variable_y
+        
+    fill_profile(hist,array)
     
+    return hist    
+    
+def Get2DHist(input, variable_x, variable_y, name="", selection="", treename='DecayTree', weights=None, **kwargs):
+    
+    #1 nbins, xmin, xmax
+    #2 BinningScheme
+
+    scale1 = float(1 / kwargs.get("scale1",1))
+    scale2 = float(1 / kwargs.get("scale2",1))
+    
+    if len(kwargs) == 8:
+        if any("nbins1" in k for k in kwargs.keys()) and any("nbins2" in k for k in kwargs.keys()):
+            nbins1, xmin1, xmax1 = kwargs["nbins1"], kwargs["xmin1"]*scale1, kwargs["xmax1"]*scale1
+            nbins2, xmin2, xmax2 = kwargs["nbins2"], kwargs["xmin2"]*scale2, kwargs["xmax2"]*scale2
+            params = [nbins1, xmin1, xmax1, nbins2, xmin2, xmax2]
+        else: raise ValueError()
+    else: raise ValueError()
+
+    hist = Hist2D(*params,name=name,title=name,type='F')
+    
+    branches = [variable_x,variable_y]
+    
+    if isinstance(input,str) and (".root" in input):
+        array = root2array(input,treename,branches,selection)
+    elif isinstance(input,np.ndarray):
+        array = input[branches]
+    elif isinstance(input,ROOT.TTree):
+        array = tree2array(input,branches,selection)
+
+    variable_x = array[variable_x]*scale1
+    variable_y = array[variable_y]*scale2
+        
+    array = np.zeros((len(array),2))
+    array[:,0] = variable_x
+    array[:,1] = variable_y
+            
+    fill_hist(hist,array)
+        
     return hist
 
 def AddHists(hists, name):

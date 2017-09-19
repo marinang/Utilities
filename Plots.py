@@ -19,7 +19,7 @@ def LHCbStyle():
     STYLE = {}
 
     STYLE['figure.figsize'] = 8.75, 5.92
-    STYLE['figure.dpi'] = 1000
+    STYLE['figure.dpi'] = 300
 
     STYLE['font.family'] = 'sans-serif'
     STYLE['font.serif'] =  'Times New Roman'
@@ -36,9 +36,12 @@ def LHCbStyle():
     STYLE['lines.linewidth'] =       1.4
     STYLE['lines.markeredgewidth'] = 1.4
     STYLE['lines.markersize'] =      8
+    
+    STYLE['errorbar.capsize'] =      1.3
 
     STYLE['savefig.bbox'] = 'tight'
     STYLE['savefig.pad_inches'] = 0.1
+    STYLE['savefig.dpi'] = 800
     
     STYLE['axes.labelsize'] = 20
     STYLE['axes.linewidth'] = 1.8
@@ -136,7 +139,7 @@ def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candl
     return Dict
 
 
-def Draw(Dict, Logy=False, Err=False, Candle=False, minY=-999999, maxY=999999):
+def Draw(Dict, Logy=False, Err=False, minY=-999999, maxY=999999, Candle=False):
 
     Objs,leg = Dict.get('objs'),Dict.get('leg')
     
@@ -146,7 +149,7 @@ def Draw(Dict, Logy=False, Err=False, Candle=False, minY=-999999, maxY=999999):
         maxY = 1.20*max([h.GetMaximum() for h in Objs])
 
     for obj in Objs:
-        
+
         if obj == Objs[0]:
             if Candle == True:
                 obj.Draw('Candle')
@@ -194,6 +197,7 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
  
     patch, name = [],[]
     for obj in Objs:
+        
         if Err or isinstance(obj, ROOT.TGraphAsymmErrors):
             axes.set_xlabel(Xlabel, ha='right', x=1)
             axes.set_ylabel(Ylabel, ha='right', y=1)
@@ -203,7 +207,8 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
             h, l = axes.get_legend_handles_labels()
             patch.append(h[-1])
             name.append(l[-1])
-        if isinstance(obj, ROOT.TH1F):
+            continue
+        elif isinstance(obj, ROOT.TH1):
             axes.set_xlabel(Xlabel, ha='right', x=1)
             if not Ylabel:
                 Ylabel = "Events"
@@ -212,6 +217,12 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
             h, l = axes.get_legend_handles_labels()
             patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth()))
             name.append(l[-1])
+            continue
+        elif isinstance(obj, ROOT.TH2):
+            axes.set_xlabel(Xlabel, ha='right', x=1)
+            axes.set_ylabel(Ylabel, ha='right', x=1)
+            rplt.hist2d(obj, axes=axes)
+            h, l = axes.get_legend_handles_labels()
             
     axes.get_yaxis().set_tick_params(direction='in', left=True, right=True)
     axes.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
@@ -223,7 +234,7 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
         plt.legend(patch, name, loc='best')
     
 def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=False, Logy=False, Err=False, MPL=False, Xlabel=None, Ylabel=None, minY=-999999, maxY=999999):
-    
+        
     hl = Decorate(Objs,Filled,Legend,Normalized,Err,MPL=MPL)
     if Normalized:
          Ylabel = "Normalized Distribution"
@@ -232,8 +243,9 @@ def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=
         os.mkdir( os.path.join('images',Folder))
     
     if not MPL:
+
         cdata = ROOT.TCanvas()
-        Draw(hl,Logy,Err,Candle,minY,maxY)
+        Draw(hl,Logy,Err,minY,maxY)
 
         if Logy == True:
             cdata.SetLogy(Logy)
