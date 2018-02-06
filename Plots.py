@@ -209,13 +209,16 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
             name.append(l[-1])
             continue
         elif isinstance(obj, ROOT.TH1):
+            
+            alpha = getattr(obj, 'alpha', None)
+            
             axes.set_xlabel(Xlabel, ha='right', x=1)
             if not Ylabel:
                 Ylabel = "Events"
             axes.set_ylabel(Ylabel, ha='right', y=1)
             rplt.hist(obj,Objsed=False,axes=axes,logy=Logy,linewidth=1.5)
             h, l = axes.get_legend_handles_labels()
-            patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth()))
+            patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth(), alpha=alpha, linestyle = obj.GetLineStyle('mpl')))
             name.append(l[-1])
             continue
         elif isinstance(obj, ROOT.TH2):

@@ -217,6 +217,7 @@ def GetHist(input, variable, name="", selection="", treename='DecayTree', weight
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
     
+    
     if weights:
         fill_hist(hist,array[variable]*scale,array[weights])
     else:
