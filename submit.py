@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-## Author: Luca Pescatore
+## Author: Luca Pescatore, modified by Matthieu Marinangeli
 ## Mail: pluca@cern.ch
 ## Description: script to submit jobs (mostly done for lxplus but for local submissions works anywhere)
 ## N.B.: Needs an environment variable "JOBDIR" which is the location to put jobs outputs
@@ -12,7 +12,10 @@ import subprocess as sub
 import random
 from datetime import datetime
 
-## Rutines
+now = datetime.now()
+random.seed(now.day)
+
+#### Routines for intercative lxplus submission ####
 
 def getRdmNode() :
 
@@ -27,23 +30,124 @@ def getAliveNode() :
         node, out = getRdmNode()
     return [node, out]
 
-def launch_interactive(dirname) :
+def LaunchInteractive( Dirname ):
 
     print("Searching for an alive node...")
     node, out = getAliveNode()
     print("Submitting to ", node)
-    os.system('ssh -o StrictHostKeyChecking=no %s "cd ' % node + dirname  + '; chmod +x run.sh ; ./run.sh" &')
-    print("Start: ", datetime.now())
+    
+    command  = 'ssh -o StrictHostKeyChecking=no %s "cd ' % node + dirname  + '; chmod +x run.sh ; ./run.sh" &'
+    command += ' ; echo "Start: {0}"'.format(datetime.now()) 
 
-## Main
+    return command 
+    
+def PrepareLxplusJob( Options, Dirname ):
+    
+    #prepare lxplus batch job submission
+    
+    command = "bsub -R 'pool>30000' -o {dir}/out -e {dir}/err \
+            -q {queue} {mail} -J {jname} < {dir}/run.sh".format(
+                dir=Dirname,queue=Options.queue,
+                mail=Options.mail,jname=Options.subdir+Options.jobname)
+    
+    return command
 
+    
+def IsSlurm():
+    
+    # Check if there is a slurm batch system
+    
+    try:
+        sub.Popen(['squeue'], stdout=sub.PIPE)
+    except OSError:
+        return False
+    else:
+        return True
+        
+def PrepareSlurmJob( Options, Dirname ):
+    
+    #prepare slurm batch job submission
+    
+    def GetSlurmNodes():
+        
+        cmd = sub.Popen(['sinfo','-N'], stdout=sub.PIPE)
+        cmd_out, _ = cmd.communicate()    
+        output = cmd_out.split("\n")
+        output.remove(output[0])
+        
+        list_nodes = []
+        for o in output:
+            if "batch" in o:
+                list_nodes.append( o.split(" ")[0] )
+                
+        return list_nodes
+
+    oldrun = open(dirname+"/run.sh")
+    oldrunstr = oldrun.read()
+    oldrun.close()
+
+    fo = open(dirname+"/run.sh","w")
+    fo.write("#!/bin/bash -fx\n")                       
+    fo.write("#SBATCH -o " + Dirname + "/out\n")
+    fo.write("#SBATCH -e " + Dirname + "/err\n")
+    fo.write("#SBATCH -J " + Options.subdir + Options.jobname + "\n")
+    fo.write("#SBATCH --mem-per-cpu "+str(Options.m_cpu)+"\n")
+    fo.write("#SBATCH -n 1\n")
+    fo.write("#SBATCH -p batch\n")
+    fo.write("#SBATCH -t {0}:00:00\n".format(Options.m_time))
+    
+    exclude = Options.m_exclude
+    nodestoexclude = Options.m_nodes2exclude
+    
+    if exclude != 0 or len(nodestoexclude) > 0:        
+        now = datetime.now()
+        random.seed(now.day)
+        
+        nodes = GetSlurmNodes()
+        random.shuffle(nodes)
+        
+        n2exclude = int(exclude) + len(nodestoexclude)
+        
+        #### check if nodes exit
+        exists = all(n in nodes for n in nodestoexclude)
+        
+        if not exists:
+            _nodestoexclude = []
+            for n in nodestoexclude:
+                if not n in nodes:
+                    warnings.warn( red(" WARNING: node {0} does not exist. \
+                                It will be removed!".format(n)), stacklevel = 2 )
+                else:
+                    _nodestoexclude.append(n)
+            nodestoexclude = _nodestoexclude
+            
+        for n in nodestoexclude:
+            nodes.remove(n)
+
+        nodes = nodes[0:(n2exclude - len(nodestoexclude))]
+        nodes += nodestoexclude
+        
+        nodes2exclude = ""
+        for n in nodes:
+            if n == nodes[-1]: nodes2exclude += n
+            else: nodes2exclude += n +","
+                
+        fo.write("#SBATCH --exclude={0}\n\n\n".format(nodes2exclude))
+    
+    fo.write(oldrunstr)
+    fo.close()
+    
+    command = "sbatch "+Dirname+"/run.sh"
+    return command
+    
 if __name__ == "__main__" :
 
     jobdir = os.getenv("JOBDIR")
+    
     if jobdir is None :
         jobdir = os.getenv("HOME")+"/jobs"
         os.system("mkdir -p "+jobdir)
-
+        
     parser = ArgumentParser()
     parser.add_argument("-d", default="", dest="subdir", 
         help="Folder of the job, notice that the job is created anyway in a folder called as the jobname, so this is intended to group jobs")
@@ -70,11 +174,19 @@ if __name__ == "__main__" :
         help="Does not put the automatic ./ in front of the executable" )
     parser.add_argument("-m", dest="mail", default = "", action="store_const", const = "-u "+os.environ["USER"]+"@cern.ch",
         help="When job finished sends a mail to USER@cern.ch" )
+    parser.add_argument("-cpu", default=4000, dest="m_cpu", type=int,
+        help="Memory per cpu (Slurm).")
+    parser.add_argument("-time", default=20, dest="m_time", type=int,
+        help="Maximum time of the job in hours (Slurm).")
+    parser.add_argument("-exclude", default=0, dest="m_exclude", type=int,
+        help="Number of nodes to exclude (Slurm).")
+    parser.add_argument("-nodes2exclude", default=[], dest="m_nodes2exclude", type=str,
+        help="Nodes to exclude (Slurm).", nargs="+")
     parser.add_argument("-in", dest="infiles", default = "", help="Files to copy over")
     parser.add_argument("command", help="Command to launch")
     opts = parser.parse_args()
+    
 
-    random.seed()
     exe, execname = None, None
     commands = opts.command.split(' ')
 
@@ -82,16 +194,27 @@ if __name__ == "__main__" :
     elif "." in commands[0] : 
         execname = commands[0].replace('./','')
         args = commands[1:]
+    elif "lb-run" in commands[0]:
+        exe      = "{0} {1} {2}".format(commands[0],commands[1],commands[2])
+        execname = commands[3]
+        args = commands[4:]
     elif len(commands) > 1 : 
         execname = commands[1]
         exe      = commands[0]
         args = commands[2:]
+        
+        if not "." in execname:
+            execname  = ""
+            args = commands[1:]
+            
     else : sys.exit()
     if(opts.jobname == "") :
         jobname = re.sub(r'\..*',"", execname.replace('./',''))
    
+    ########################################################################################
     ## Make the needed folders and copy the executable and everything else needed in them
-
+    ########################################################################################
+    
     subdirname = opts.basedir
     if opts.subdir != "" :
         subdirname += "/"+opts.subdir
@@ -106,17 +229,20 @@ if __name__ == "__main__" :
 
     if(opts.unique) : copyto = subdirname
     else : copyto = dirname
-    if '/' not in execname :
+    
+    if not execname == "":
         os.system("cp " + execname + " " + copyto )
-    else :
-        print("Executable is a path. If you used all absolute paths the jobs will work anyway.")
+    if '/'  in execname :
+        execname = execname.split("/")[-1]
     
     for arg in opts.infiles.split() :
         os.system("cp " + arg + " " + copyto )
         if opts.unique :
             os.system("ln -s {f1} {f2}".format(f1=copyto+'/'+arg,f2=dirname+'/'+arg))
-    
+            
+    ########################################################################################
     ## Create the run.sh file containing the information about how the executable is run
+    ########################################################################################
 
     os.system( "cd " + dirname )
     runfile = open(dirname+"/run.sh","w")
@@ -128,58 +254,49 @@ if __name__ == "__main__" :
     if exe is None and not opts.noscript:   ### Ensure executable
         runfile.write("chmod 755 " + copyto + "/" +execname +'\n')
 
+    if  execname == "":
+        pathexec = ""
+    else:
+        pathexec = copyto+"/"+execname
+        
     if exe is None:
-        runfile.write( '{dir} {args}'.format(dir=copyto+"/"+execname,args=' '.join(args)) )
+        runfile.write( '{dir} {args}'.format(dir=pathexec,args=' '.join(args)) + "\n")
     else :
-        runfile.write( '{exe} {dir} {args}'.format(exe=exe,dir=copyto+"/"+execname,args=' '.join(args)) )
+        runfile.write( '{exe} {dir} {args}'.format(exe=exe,dir=pathexec,args=' '.join(args)) + "\n")
 
     if opts.local or opts.interactive :     ### Output
         runfile.write( " >& " + dirname + "/out " )
     runfile.close()
     os.system( "chmod 755 " + dirname + "/run.sh" )
-
+    
+    ########################################################################################
     ## Run executable in local, interactive or batch mode
+    ########################################################################################
     
     if(opts.subdir != "") :
         opts.subdir=(re.sub("^.*/","",opts.subdir)+"_")
     
     if opts.local :                           ## Local
         print("Running local")
-        os.system( "cd " + dirname )
-        os.system( dirname + "/run.sh &" )
-
+        command  = "cd " + dirname
+        command += dirname + "/run.sh &"
+            
     elif "lxplus" in os.getenv("HOSTNAME") :  ## Batch for lxplus
         if opts.interactive :
-            launch_interactive(dirname)
+            command = LaunchInteractive(dirname)
         else :
-            cmd = "bsub -R 'pool>30000' -o {dir}/out -e {dir}/err \
-                    -q {queue} {mail} -J {jname} < {dir}/run.sh".format(
-                        dir=dirname,queue=opts.queue,
-                        mail=opts.mail,jname=opts.subdir+opts.jobname)
-            os.system(cmd)
-
-    elif 'lphe' in os.getenv("HOSTNAME") :    ## Batch for EPFL
-        cmd = "sbatch "+dirname+"/run.sh"
-
-        oldrun = open(dirname+"/run.sh")
-        oldrunstr = oldrun.read()
-        oldrun.close()
-
-        fo = open(dirname+"/run.sh","w")
-        fo.write("#!/bin/bash -fx\n")                       
-        fo.write("#SBATCH -o "+dirname+"/out\n")
-        fo.write("#SBATCH -e "+dirname+"/err\n")
-        fo.write("#SBATCH -J "+opts.subdir+opts.jobname+"\n")
-        fo.write("#SBATCH --mem-per-cpu 2000\n")
-        #fo.write("#SBATCH -N 1\n")
-        fo.write("#SBATCH -n 1\n")
-        fo.write("#SBATCH -p batch\n")
-        fo.write("#SBATCH -t 12:00:00\n\n\n")
-        fo.write(oldrunstr)
-        fo.close()
-        os.system(cmd)
-
+            command = PrepareLxplusJob(opts, dirname)
+            
+    elif IsSlurm():
+        command = PrepareSlurmJob(opts, dirname)
+     
     else :
-        print("Can run in batch mode only on lxplus or the EPFL cluster. Go there or run with '--local'")
+        print("Can run in batch mode only on lxplus or on a slurm batch system. Go there or run with '--local'")
+     
+    ########################################################################################
+    ## Execution of the job sending
+    ########################################################################################
+       
+    os.system(command)
 
 

@@ -5,14 +5,15 @@
 
 from __future__ import division
 import ROOT
-from Tree import readTree
+from .Tree import readTree
 from array import *
 from root_numpy import root2array, tree2array, fill_hist, fill_profile
 import numpy as np
+from skhep import units
+from Utilities.utilities import destruct_objects
 
 import sys
-sys.path.append('home/marinang/packages/anaconda2/lib/python2.7/site-packages')
-from rootpy.plotting import Hist, Graph, Hist2D, Profile
+from rootpy.plotting import Hist, Graph, Hist2D, Profile, Hist3D
 
 class BinningScheme:
     
@@ -52,8 +53,8 @@ class BinningScheme:
             
             self.Bins = sorted(self.Bins + unif_bins)
         else:
-            print "Can not include uniforms bins between "+str(xmin)+" and "+str(xmax)+" because another bin boundary is present in that range!"
-            print self.Bins
+            print("Can not include uniforms bins between "+str(xmin)+" and "+str(xmax)+" because another bin boundary is present in that range!")
+            print(self.Bins)
             
     def addBin(self, UpperLimit):
         
@@ -80,21 +81,19 @@ class EffHist(ROOT.TH1F):
     
     def __init__(self, name, variable, scale=1, **kwargs):
         
-        if len(kwargs) == 3 and any("nbins" in k for k in kwargs.keys()):
+        self._kwargs = kwargs
+       
+        if set(['nbins', 'xmin', 'xmax']).issubset(kwargs.keys()):
             nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
             ROOT.TH1F.__init__(self,name,name,nbins,xmin*scale,xmax*scale)
-            self.bin_scheme = None
-            self.nbins = nbins
-            self.xmin = xmin
-            self.xmax = xmax
-            
-        elif len(kwargs) == 1 and any("bin_scheme" in k for k in kwargs.keys()):
+
+        elif set(['bin_scheme']).issubset(kwargs.keys()):
             bin_scheme = kwargs["bin_scheme"]
             ROOT.TH1F.__init__(self,name,name,bin_scheme.nBins(),bin_scheme.ReturnArray(scale))
-            self.bin_scheme = bin_scheme
-            self.nbins = None
-            self.xmin = None
-            self.xmax = None
+
+        elif set(['bins']).issubset(kwargs.keys()):
+            bins = array('d', kwargs["bins"])
+            ROOT.TH1F.__init__(self,name,name,len(bins)-1, bins)           
         
         self.var = variable
         self.name = name
@@ -103,8 +102,8 @@ class EffHist(ROOT.TH1F):
         self.Xaxis_name = ""
         self.hist_passed = None
         self.hist_total = None
-        self.selection = ""
-        self.input = ""
+        self.selection = None
+        self.input = None
         
     def addInput(self, input):
         #input tree with the events
@@ -117,43 +116,50 @@ class EffHist(ROOT.TH1F):
         
         self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
         self.Sumw2()
-
+        
     def addSelection(self, selection):
         
-        self.selection = selection
-                
-        if self.bin_scheme:
-            self.hist_total = GetHist(self.input, self.var, self.name+"_Total", scale=self.scale, bin_scheme=self.bin_scheme)
-            self.hist_passed = GetHist(self.input, self.var, self.name+"_Passed", selection=self.selection, scale=self.scale, bin_scheme=self.bin_scheme)
+        if self.input is not None:
+            self.selection = selection
+            
+            self.hist_total = GetHist(self.input, self.var, self.name+"_Total", **self._kwargs)
+            self.hist_passed = GetHist(self.input, self.var, self.name+"_Passed", selection=self.selection, **self._kwargs)
+
+            self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
+            self.Sumw2()
+            
         else:
-            self.hist_total = GetHist(self.input, self.var, self.name+"_Total", scale=self.scale, nbins=self.nbins, xmin=self.xmin, xmax=self.xmax)
-            self.hist_passed = GetHist(self.input, self.var, self.name+"_Passed", selection=self.selection, scale=self.scale, nbins=self.nbins, xmin=self.xmin, xmax=self.xmax)
-        
-        self.Divide(self.hist_passed,self.hist_total,1.0,1.0,"B")
-        self.Sumw2()
+            raise NotImplementedError("Add and input first!")
         
     def return_TGraphAsymmErrors(self, MPL=False):
         
-        gr = ROOT.TGraphAsymmErrors()
-        gr.Divide(self.hist_passed,self.hist_total)
+        self.gr = ROOT.TGraphAsymmErrors()
+        self.gr.Divide(self.hist_passed,self.hist_total)
 
         if self.Xaxis_name == "":
-            gr.GetXaxis().SetTitle(self.variable)
+            self.gr.GetXaxis().SetTitle(self.var)
         else:
-            gr.GetXaxis().SetTitle(self.Xaxis_name)
+            self.gr.GetXaxis().SetTitle(self.Xaxis_name)
+            
+        self.gr.SetFillStyle(1001)
             
         if MPL:
-            gr = Graph(gr)
-            gr.name = self.GetName()
-            gr.title = self.GetTitle()
+            self.gr = Graph(self.gr)
+            self.gr.name = self.GetName()+"_graph"
+            self.gr.title = self.GetTitle()
+            yaxis = self.gr.yaxis
+            yaxis.title = self.Yaxis_name
         else:
-            gr.SetName(self.GetName()+" ")
-            gr.SetTitle(self.GetTitle()+" ")
-            gr.GetYaxis().SetTitle(self.Yaxis_name)
-            gr.SetMinimum(self.GetMinimum()-0.1)
-            gr.SetMaximum(self.GetMaximum()+0.1)
+            self.gr.SetName(self.GetName()+"_graph")
+            self.gr.SetTitle(self.GetTitle()+" ")
+            self.gr.GetYaxis().SetTitle(self.Yaxis_name)
+            self.gr.SetMinimum(self.GetMinimum()-0.1)
+            self.gr.SetMaximum(self.GetMaximum()+0.1)
 
-        return gr
+        return self.gr
+        
+    def delete(self):
+        destruct_objects(self.hist_passed, self.hist_total, self.gr, self)
     
 def InputFile(file, selection, treename, debug=False):
     
@@ -165,8 +171,8 @@ def InputFile(file, selection, treename, debug=False):
             if (isinstance(f,str)) and ('.root' in f):
                 File = True
             else:
-                print "The input number "+str(file.index(f)+1)+" of the List is not valid!"
-                print "It is a " + str(type(f))
+                print("The input number "+str(file.index(f)+1)+" of the List is not valid!")
+                print("It is a " + str(type(f)))
                 File = False
                 break
     else:
@@ -175,53 +181,57 @@ def InputFile(file, selection, treename, debug=False):
         elif (isinstance(file,ROOT.TTree)) and (treename in file.GetName()):
             Tree = True
         else:
-            print "The input is not valid!"
-            print "It is a " + str(type(file))
+            print("The input is not valid!")
+            print("It is a " + str(type(file)))
         
     if File:
         return readTree(file,selection,treename)
     elif Tree:
         return file.CopyTree(selection)
     else:
-        print " Error, no valid TFile nor Ttree provided! Check the name, treename etc ... "
+        print(" Error, no valid TFile nor Ttree provided! Check the name, treename etc ... ")
         
-def GetHist(input, variable, name="", selection="", treename='DecayTree', weights=None, scale=1, **kwargs):
-    
-    #1 nbins, xmin, xmax
-    #2 BinningScheme
-    
+def GetHist(input, variable, name="", selection="", treename='DecayTree', weights=None,  **kwargs):
+
     if name == "":
         name = variable
         
-    scale = float(1 / scale)
-    
-    if len(kwargs) == 3 and any("nbins" in k for k in kwargs.keys()):
-        nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"]*scale, kwargs["xmax"]*scale
-        hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
-    elif len(kwargs) == 1 and any("bin_scheme" in k for k in kwargs.keys()):
-        bin_scheme = kwargs["bin_scheme"]
-        hist = Hist(bin_scheme.ReturnBins(scale),name=name,title=name,type='F')
-    
     if weights:
         branches = [variable,weights]
     else:
         branches = variable
-    
+                
     if isinstance(input,str) and (".root" in input):
         array = root2array(input,treename,branches,selection)
     elif isinstance(input,np.ndarray):
         if isinstance(input.dtype.names,tuple):
-            array = input[branches]
+            if isinstance(selection, np.ndarray):
+                array = input[selection]
+                array = array[branches]
+            else:
+                array = input[branches]
         else:
             array = input
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
-    
+        
+    if set(['nbins', 'xmin', 'xmax']).issubset(kwargs.keys()):
+        nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
+        hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
+        
+    elif set(['bin_scheme']).issubset(kwargs.keys()):
+        bin_scheme = kwargs["bin_scheme"]
+        hist = Hist(bin_scheme.ReturnBins(),name=name,title=name,type='F')
+        
+    elif set(['bins']).issubset(kwargs.keys()):
+        bins = kwargs["bins"]
+        hist = Hist(bins,name=name,title=name,type='F')
     
     if weights:
-        fill_hist(hist,array[variable]*scale,array[weights])
+        hist.Sumw2()
+        fill_hist(hist,array[variable],array[weights])
     else:
-        fill_hist(hist,array*scale)
+        fill_hist(hist,array)
     
     return hist
     
@@ -250,7 +260,11 @@ def GetProfile(input, variable_x, variable_y, name="", selection="", treename='D
     if isinstance(input,str) and (".root" in input):
         array = root2array(input,treename,branches,selection)
     elif isinstance(input,np.ndarray):
-        array = input[branches]
+        if isinstance(selection, np.ndarray):
+            array = input[selection]
+            array = array[branches]
+        else:
+            array = input[branches]
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
         
@@ -263,45 +277,133 @@ def GetProfile(input, variable_x, variable_y, name="", selection="", treename='D
         
     fill_profile(hist,array)
     
-    return hist    
+    return hist
     
-def Get2DHist(input, variable_x, variable_y, name="", selection="", treename='DecayTree', weights=None, **kwargs):
-    
-    #1 nbins, xmin, xmax
-    #2 BinningScheme
-
-    scale1 = float(1 / kwargs.get("scale1",1))
-    scale2 = float(1 / kwargs.get("scale2",1))
-    
-    if len(kwargs) == 8:
-        if any("nbins1" in k for k in kwargs.keys()) and any("nbins2" in k for k in kwargs.keys()):
-            nbins1, xmin1, xmax1 = kwargs["nbins1"], kwargs["xmin1"]*scale1, kwargs["xmax1"]*scale1
-            nbins2, xmin2, xmax2 = kwargs["nbins2"], kwargs["xmin2"]*scale2, kwargs["xmax2"]*scale2
-            params = [nbins1, xmin1, xmax1, nbins2, xmin2, xmax2]
-        else: raise ValueError()
-    else: raise ValueError()
-
-    hist = Hist2D(*params,name=name,title=name,type='F')
-    
-    branches = [variable_x,variable_y]
-    
+def Get2DHist(input, variables, name, selection="", treename='DecayTree', weights=None, scale = 1.,  **kwargs):
+        
+    if not isinstance(variables, list) and len(variables) == 2:
+        raise NotImplementedError("Remember that you are filling a 2D histogram!")
+        
+    if not set(['binsx', 'binsy']).issubset(kwargs.keys()):
+        raise NotImplementedError("Please provide some binnings for each variable!")
+        
+    varx, vary= variables[0], variables[1]
+    bins = [kwargs["binsx"], kwargs["binsy"]]
+        
+    if weights:
+        branches = variables + [weights]
+    else:
+        branches = variables
+                
     if isinstance(input,str) and (".root" in input):
         array = root2array(input,treename,branches,selection)
     elif isinstance(input,np.ndarray):
-        array = input[branches]
+        if isinstance(input.dtype.names,tuple):
+            if isinstance(selection, np.ndarray):
+                array = input[selection]
+                array = array[branches]
+            else:
+                array = input[branches]
+        else:
+            array = input
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
-
-    variable_x = array[variable_x]*scale1
-    variable_y = array[variable_y]*scale2
         
-    array = np.zeros((len(array),2))
-    array[:,0] = variable_x
-    array[:,1] = variable_y
+    BINS = []
+        
+    for b in bins:
+        if set(['nbins', 'xmin', 'xmax']).issubset(b.keys()):
+            nbins, xmin, xmax = b["nbins"], b["xmin"], b["xmax"]
+            BINS += [nbins, xmin, xmax]
+        
+        elif set(['bin_scheme']).issubset(b.keys()):
+            bin_scheme = b["bin_scheme"]
+            BINS.append(bin_scheme.ReturnBins())
             
-    fill_hist(hist,array)
+        elif set(['bins']).issubset(b.keys()):
+            bins = b["bins"]
+            BINS.append(bins)
         
+    hist = Hist2D(*BINS,name=name,title=name,type='F')
+    
+    array_to_fill = np.empty((len(array),2))
+    
+    array_to_fill[:,0] = array[varx]
+    array_to_fill[:,1] = array[vary]
+    
+    print array_to_fill
+    
+    if weights:
+        hist.Sumw2()
+        fill_hist(hist,array_to_fill,array[weights])
+    else:
+        fill_hist(hist,array_to_fill)
+        
+    print hist.Integral()
+    
     return hist
+        
+def Get3DHist(input, variables, name, selection="", treename='DecayTree', weights=None, scale = 1.,  **kwargs):
+        
+    if not isinstance(variables, list) and len(variables) == 3:
+        raise NotImplementedError("Remember that you are filling a 3D histogram!")
+        
+    if not set(['binsx', 'binsy', 'binsz']).issubset(kwargs.keys()):
+        raise NotImplementedError("Please provide some binnings for each variable!")
+        
+    varx, vary, varz = variables[0], variables[1], variables[2]
+    bins = [kwargs["binsx"], kwargs["binsy"], kwargs["binsz"]]
+        
+    if weights:
+        branches = variables + [weights]
+    else:
+        branches = variables
+                
+    if isinstance(input,str) and (".root" in input):
+        array = root2array(input,treename,branches,selection)
+    elif isinstance(input,np.ndarray):
+        if isinstance(input.dtype.names,tuple):
+            if isinstance(selection, np.ndarray):
+                array = input[selection]
+                array = array[branches]
+            else:
+                array = input[branches]
+        else:
+            array = input
+    elif isinstance(input,ROOT.TTree):
+        array = tree2array(input,branches,selection)
+        
+    BINS = []
+        
+    for b in bins:
+        if set(['nbins', 'xmin', 'xmax']).issubset(b.keys()):
+            nbins, xmin, xmax = b["nbins"], b["xmin"], b["xmax"]
+            BINS += [nbins, xmin, xmax]
+        
+        elif set(['bin_scheme']).issubset(b.keys()):
+            bin_scheme = b["bin_scheme"]
+            BINS.append(bin_scheme.ReturnBins())
+            
+        elif set(['bins']).issubset(b.keys()):
+            bins = b["bins"]
+            BINS.append(bins)
+        
+    hist = Hist3D(*BINS,name=name,title=name,type='F')
+    
+    array_to_fill = np.empty((len(array),3))
+    
+    array_to_fill[:,0] = array[varx]
+    array_to_fill[:,1] = array[vary]
+    array_to_fill[:,2] = array[varz]
+    
+    if weights:
+        hist.Sumw2()
+        fill_hist(hist,array_to_fill,array[weights])
+    else:
+        fill_hist(hist,array_to_fill)
+    
+    return hist
+    
 
 def AddHists(hists, name):
     

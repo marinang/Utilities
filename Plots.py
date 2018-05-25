@@ -7,11 +7,12 @@ import ROOT
 import glob
 import os
 
-from Hist import EffHist
+from .Hist import EffHist
 import matplotlib as mpl
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import rootpy.plotting.root2matplotlib as rplt
+from future.utils import iteritems
 
 
 def LHCbStyle():
@@ -63,7 +64,7 @@ def LHCbStyle():
     STYLE['ytick.minor.pad'] =   10
     STYLE['ytick.labelsize'] =   17
     
-    for k, v in STYLE.iteritems():
+    for k, v in iteritems(STYLE):
             mpl.rcParams[k] = v
     
 def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candle=False, MPL=False):
@@ -179,9 +180,12 @@ def Draw(Dict, Logy=False, Err=False, minY=-999999, maxY=999999, Candle=False):
     if leg:
         leg.Draw()
         
-def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None, minY=-999999, maxY=999999):
+def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None, xlimit = (-999999,999999), ylimit = (-999999,999999)):
 
     Objs = Dict.get('objs')
+    
+    minY, maxY = ylimit[0], ylimit[1]
+    minX, maxX = xlimit[0], xlimit[1]
 
     if minY == -999999:
         minY = min([h.GetMinimum() for h in Objs])
@@ -203,15 +207,16 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
             axes.set_ylabel(Ylabel, ha='right', y=1)
             if Logy:
                 axes.set_yscale("log", nonposy='clip')
+            if not Ylabel:
+                Ylabel = Objs[0].GetYaxis().GetTitle()  
+            axes.set_ylabel(Ylabel, ha='right', y=1)
             rplt.errorbar(obj,axes=axes,emptybins=False)
             h, l = axes.get_legend_handles_labels()
             patch.append(h[-1])
             name.append(l[-1])
             continue
         elif isinstance(obj, ROOT.TH1):
-            
             alpha = getattr(obj, 'alpha', None)
-            
             axes.set_xlabel(Xlabel, ha='right', x=1)
             if not Ylabel:
                 Ylabel = "Events"
@@ -231,12 +236,14 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
     axes.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
     axes.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
     axes.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+    if not( maxX == 999999 and minX == -999999 ):
+        axes.set_xlim(minX,maxX)
     axes.set_ylim(minY,maxY)
     
     if Legend:
         plt.legend(patch, name, loc='best')
     
-def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=False, Logy=False, Err=False, MPL=False, Xlabel=None, Ylabel=None, minY=-999999, maxY=999999):
+def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=False, Logy=False, Err=False, MPL=False, Xlabel=None, Ylabel=None, xlimit = (-999999,999999), ylimit = (-999999,999999)):
         
     hl = Decorate(Objs,Filled,Legend,Normalized,Err,MPL=MPL)
     if Normalized:
@@ -246,6 +253,8 @@ def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=
         os.mkdir( os.path.join('images',Folder))
     
     if not MPL:
+        
+        minY, maxY = ylimit[0], ylimit[1]
 
         cdata = ROOT.TCanvas()
         Draw(hl,Logy,Err,minY,maxY)
@@ -260,7 +269,7 @@ def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=
         LHCbStyle()
         fig, axes = plt.subplots()
 
-        DrawMPL(hl,axes,Logy,Err,Legend,Xlabel,Ylabel,minY,maxY)
+        DrawMPL(hl,axes,Logy,Err,Legend,Xlabel,Ylabel,xlimit,ylimit)
         plt.minorticks_on()
         
         fig.savefig(os.path.join('images',Folder,FileName))

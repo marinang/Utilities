@@ -5,14 +5,89 @@
 
 from __future__ import division
 import ROOT
-from PyLHCb.Root.RootUtils import LHCbStyle
-from PyLHCb.Root.RootUtils import destruct_object
-from PyLHCb.Utilities.Debug import memory_usage
 import glob
 import os
 import math
 import numpy as np
 from root_numpy import array2tree, tree2array, root2array, array2root
+
+#class TTree(object):
+#    
+#    
+
+class tchain(object):
+    
+    def __init__(self, name, files = [], nevents = ""):
+        
+        self.name  = name
+        self.chain = ROOT.TChain(name)
+        if nevents != "":
+            self.__nevents = True
+            self._neventspath = nevents
+            self._nevents = 0
+        else:
+            self.__nevents = False
+        
+        for f in files:
+            self.chain.Add(f)
+            
+            if self.__nevents:
+                self.neventsfile( f )
+            
+    @property
+    def nentries(self):
+        return self.chain.GetEntries()
+        
+    @property
+    def nevents(self):
+        if self.__nevents:
+            return self._nevents
+        else:
+            return self.chain.GetEntries()
+    
+    def neventsfile(self, _file):
+        _f = ROOT.TFile( _file, "READ" )
+        nev = _f.Get(self._neventspath)
+        
+        nev.GetEntry(0)
+        self._nevents += nev.GetLeaf("nevents").GetValue()
+        
+        _f.Close()
+        
+    def __len__(self):
+        return self.nentries
+            
+    def addfile(self, _file):
+        
+        self.chain.Add(_file)
+        
+        if self.__nevents:
+            self.neventsfile( _file )
+        
+        
+    def tofile(self, filename, treename = ""):
+        
+        f = ROOT.TFile(filename, "recreate")
+        
+        chain = self.chain.CopyTree("")
+                
+        if treename == "":
+            chain.SetName(treename)
+            
+        if self.__nevents:
+            nevents = ROOT.TTree("nevents", "nevents")
+            nevents.SetEntries(1)
+            a_nevents  = np.zeros(1,dtype=np.float64)
+            br_nevents = nevents.Branch( 'nevents', a_nevents, 'nevents/D')
+            nevents.GetEntry(0)
+            a_nevents[0] = self._nevents
+            br_nevents.Fill()
+            
+        f.Write()
+        f.Close()
+        
+        print("TChain {0} written into {1}".format( self.name, filename ))
+        
 
 
 def readTree(file,selection='',treename='DecayTree',fraction=1,branches=None):
@@ -25,7 +100,9 @@ def readTree(file,selection='',treename='DecayTree',fraction=1,branches=None):
         
     return array2tree(tree_array,name=treename)
     
-def makeTree(files,treename,fileoutput,selection='',fraction=1.0,branches=None):
+def mergefiles(files,treename,fileoutput,selection='',fraction=1.0,branches=None):
+    
+    chain = ROOT.TChain(files)
     
     tree_array = root2array(files,treename,branches,selection)
 
@@ -33,7 +110,7 @@ def makeTree(files,treename,fileoutput,selection='',fraction=1.0,branches=None):
         nEvts = int(len(tree_array)*fraction)
         tree_array = np.random.choice(tree_array,nEvts)
         
-    print len(tree_array)
+    print(len(tree_array))
     
     array2root(tree_array,fileoutput,'DecayTree','recreate')
 
