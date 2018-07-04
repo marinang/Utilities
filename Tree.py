@@ -4,12 +4,13 @@
 # @date   2016-11-09
 
 from __future__ import division
+from .dependencies import softimport
 import ROOT
 import glob
 import os
 import math
 import numpy as np
-from root_numpy import array2tree, tree2array, root2array, array2root
+root_numpy = softimport("root_numpy")
 
 #class TTree(object):
 #    
@@ -92,19 +93,19 @@ class tchain(object):
 
 def readTree(file,selection='',treename='DecayTree',fraction=1,branches=None):
     
-    tree_array = root2array(file,treename,branches,selection)
+    tree_array = root_numpy.root2array(file,treename,branches,selection)
             
     if not fraction == 1:
         nEvts = int(len(tree_array)*fraction)
         tree_array = np.random.choice(tree_array,nEvts)
         
-    return array2tree(tree_array,name=treename)
+    return root_numpy.array2tree(tree_array,name=treename)
     
 def mergefiles(files,treename,fileoutput,selection='',fraction=1.0,branches=None):
     
     chain = ROOT.TChain(files)
     
-    tree_array = root2array(files,treename,branches,selection)
+    tree_array = root_numpy.root2array(files,treename,branches,selection)
 
     if not fraction == 1.0:
         nEvts = int(len(tree_array)*fraction)
@@ -112,7 +113,7 @@ def mergefiles(files,treename,fileoutput,selection='',fraction=1.0,branches=None
         
     print(len(tree_array))
     
-    array2root(tree_array,fileoutput,'DecayTree','recreate')
+    root_numpy.array2root(tree_array,fileoutput,'DecayTree','recreate')
 
 def Efficiency(tree_total,selection=''):
     

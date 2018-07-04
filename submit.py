@@ -11,9 +11,43 @@ from argparse import ArgumentParser
 import subprocess as sub
 import random
 from datetime import datetime
+import time
 
 now = datetime.now()
 random.seed(now.day)
+
+jobdir = os.getenv("JOBDIR")
+
+if jobdir is None :
+    jobdir = os.getenv("HOME")+"/jobs"
+    os.system("mkdir -p "+jobdir)
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+        
+        default = {"subdir":  "",
+                   "run":     -1,
+                   "basedir": jobdir,
+                   "jobname": "",
+                   "setup":   "",
+                   "clean":   True,
+                   "interactive": False,
+                   "shell":   "",
+                   "unique":  False,
+                   "local":   False,
+                   "noscript": False,
+                   "m_cpu":     4000,
+                   "m_time":    20,
+                   "m_exclude": 0,
+                   "m_nodes2exclude": [],
+                   "infiles": "",
+                   "express":  False }
+                   
+        for d in list(default.keys()):
+            if d not in self.__dict__.keys():
+                self[d] = default[d]
 
 #### Routines for intercative lxplus submission ####
 
@@ -82,11 +116,11 @@ def PrepareSlurmJob( Options, Dirname ):
                 
         return list_nodes
 
-    oldrun = open(dirname+"/run.sh")
+    oldrun = open(Dirname+"/run.sh")
     oldrunstr = oldrun.read()
     oldrun.close()
 
-    fo = open(dirname+"/run.sh","w")
+    fo = open(Dirname+"/run.sh","w")
     fo.write("#!/bin/bash -fx\n")                       
     fo.write("#SBATCH -o " + Dirname + "/out\n")
     fo.write("#SBATCH -e " + Dirname + "/err\n")
@@ -95,6 +129,9 @@ def PrepareSlurmJob( Options, Dirname ):
     fo.write("#SBATCH -n 1\n")
     fo.write("#SBATCH -p batch\n")
     fo.write("#SBATCH -t {0}:00:00\n".format(Options.m_time))
+    
+    if Options.express:
+       fo.write("#SBATCH --qos=express\n")
     
     exclude = Options.m_exclude
     nodestoexclude = Options.m_nodes2exclude
@@ -140,52 +177,22 @@ def PrepareSlurmJob( Options, Dirname ):
     command = "sbatch "+Dirname+"/run.sh"
     return command
     
-if __name__ == "__main__" :
-
-    jobdir = os.getenv("JOBDIR")
-    
-    if jobdir is None :
-        jobdir = os.getenv("HOME")+"/jobs"
-        os.system("mkdir -p "+jobdir)
+def SendCommand( command ):
         
-    parser = ArgumentParser()
-    parser.add_argument("-d", default="", dest="subdir", 
-        help="Folder of the job, notice that the job is created anyway in a folder called as the jobname, so this is intended to group jobs")
-    parser.add_argument("-r", default=-1, dest="run", help="Add run number")
-    parser.add_argument("-D", default=jobdir, dest="basedir",
-        help="This option bypasses the JOBDIR environment variable and creates the job's folder in the specified folder")
-    parser.add_argument("-n", default="", dest="jobname", 
-        help="Give a name to the job. The job will be also created in a folder with its name (default is the executable name)")
-    parser.add_argument("--bash", dest="shell", default = "", action="store_const", const = "#!/usr/bin/env bash",
-        help="Initialize a new bash shell before launching" )
-    parser.add_argument("--tcsh", dest="shell", default = "", action="store_const", const = "#!/usr/bin/env tcsh",
-        help="Initialize a new tcsh shell before launching" )
-    parser.add_argument("-q", dest="queue", default = "8nh", help="Choose bach queue (default 8nh)" )
-    parser.add_argument("-s", dest="setup", default = "", help="Add a setup line to the launching script" )
-    parser.add_argument("--noClean", dest="clean", action="store_false",
-        help="If the job folder already exists by default it cleans it up. This option bypasses the cleaning up" )
-    parser.add_argument("--interactive", dest="interactive", action="store_true",
-        help="Submits on lxplus without using the batch system" )
-    parser.add_argument("--uexe", dest="unique", action="store_true",
-        help="Copy the executable only once in the top folder (and not in each job folders)" )
-    parser.add_argument("--local", dest="local",  action="store_true",
-        help="Launch the jobs locally (and not in the batch system)" )
-    parser.add_argument("--noscript", dest="noscript",  action="store_true",
-        help="Does not put the automatic ./ in front of the executable" )
-    parser.add_argument("-m", dest="mail", default = "", action="store_const", const = "-u "+os.environ["USER"]+"@cern.ch",
-        help="When job finished sends a mail to USER@cern.ch" )
-    parser.add_argument("-cpu", default=4000, dest="m_cpu", type=int,
-        help="Memory per cpu (Slurm).")
-    parser.add_argument("-time", default=20, dest="m_time", type=int,
-        help="Maximum time of the job in hours (Slurm).")
-    parser.add_argument("-exclude", default=0, dest="m_exclude", type=int,
-        help="Number of nodes to exclude (Slurm).")
-    parser.add_argument("-nodes2exclude", default=[], dest="m_nodes2exclude", type=str,
-        help="Nodes to exclude (Slurm).", nargs="+")
-    parser.add_argument("-in", dest="infiles", default = "", help="Files to copy over")
-    parser.add_argument("command", help="Command to launch")
-    opts = parser.parse_args()
+    if sys.version_info[0] > 2:
+        process = sub.Popen( command, shell = True, stdout=sub.PIPE, stderr=sub.PIPE, encoding='utf8')
+    else:
+        process = sub.Popen( command, shell = True, stdout=sub.PIPE, stderr=sub.PIPE )
+        
+    time.sleep(0.03)
+    out, err = process.communicate()
+            
+    return out
     
+def main(opts):
+    
+    if type(opts) == dict:
+        opts = AttrDict(opts)
 
     exe, execname = None, None
     commands = opts.command.split(' ')
@@ -287,16 +294,66 @@ if __name__ == "__main__" :
         else :
             command = PrepareLxplusJob(opts, dirname)
             
+        try:
+            ID = int( out.split(" ")[1].replace(">","").replace("<","") )
+            print( "Submitted batch job {0}".format(ID) )
+            return ID
+        except IndexError:
+            return None
+            
     elif IsSlurm():
         command = PrepareSlurmJob(opts, dirname)
+        out = SendCommand( command )
+        ID = int( out.split(" ")[-1] )
+        print( "Submitted batch job {0}".format(ID) )
+        return ID
      
     else :
         print("Can run in batch mode only on lxplus or on a slurm batch system. Go there or run with '--local'")
      
-    ########################################################################################
-    ## Execution of the job sending
-    ########################################################################################
-       
-    os.system(command)
+if __name__ == "__main__" :
+        
+    parser = ArgumentParser()
+    parser.add_argument("-d", default="", dest="subdir", 
+        help="Folder of the job, notice that the job is created anyway in a folder called as the jobname, so this is intended to group jobs")
+    parser.add_argument("-r", default=-1, dest="run", help="Add run number")
+    parser.add_argument("-D", default=jobdir, dest="basedir",
+        help="This option bypasses the JOBDIR environment variable and creates the job's folder in the specified folder")
+    parser.add_argument("-n", default="", dest="jobname", 
+        help="Give a name to the job. The job will be also created in a folder with its name (default is the executable name)")
+    parser.add_argument("--bash", dest="shell", default = "", action="store_const", const = "#!/usr/bin/env bash",
+        help="Initialize a new bash shell before launching" )
+    parser.add_argument("--tcsh", dest="shell", default = "", action="store_const", const = "#!/usr/bin/env tcsh",
+        help="Initialize a new tcsh shell before launching" )
+    parser.add_argument("-q", dest="queue", default = "8nh", help="Choose bach queue (default 8nh)" )
+    parser.add_argument("-s", dest="setup", default = "", help="Add a setup line to the launching script" )
+    parser.add_argument("--noClean", dest="clean", action="store_false",
+        help="If the job folder already exists by default it cleans it up. This option bypasses the cleaning up" )
+    parser.add_argument("--interactive", dest="interactive", action="store_true",
+        help="Submits on lxplus without using the batch system" )
+    parser.add_argument("--uexe", dest="unique", action="store_true",
+        help="Copy the executable only once in the top folder (and not in each job folders)" )
+    parser.add_argument("--local", dest="local",  action="store_true",
+        help="Launch the jobs locally (and not in the batch system)" )
+    parser.add_argument("--noscript", dest="noscript",  action="store_true",
+        help="Does not put the automatic ./ in front of the executable" )
+    parser.add_argument("-m", dest="mail", default = "", action="store_const", const = "-u "+os.environ["USER"]+"@cern.ch",
+        help="When job finished sends a mail to USER@cern.ch" )
+    parser.add_argument("-cpu", default=4000, dest="m_cpu", type=int,
+        help="Memory per cpu (Slurm).")
+    parser.add_argument("-time", default=20, dest="m_time", type=int,
+        help="Maximum time of the job in hours (Slurm).")
+    parser.add_argument("-exclude", default=0, dest="m_exclude", type=int,
+        help="Number of nodes to exclude (Slurm).")
+    parser.add_argument("-nodes2exclude", default=[], dest="m_nodes2exclude", type=str,
+        help="Nodes to exclude (Slurm).", nargs="+")
+    parser.add_argument("-in", dest="infiles", default = "", help="Files to copy over")
+    parser.add_argument("--express", dest="express",  action="store_true",
+        help="Run the jobs on express queue line" )
+    parser.add_argument("command", help="Command to launch")
+    opts = parser.parse_args()
+    
+
+    main(opts)
 
 
