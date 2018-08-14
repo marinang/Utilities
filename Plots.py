@@ -94,6 +94,8 @@ def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candl
             obj.SetLineWidth(1)
         else:
             obj.SetLineWidth(1)
+            
+        obj.SetFillStyle(0)
         
         if obj == Objs[0]:
             obj.SetLineColor(4)
@@ -192,7 +194,8 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
     if maxY == 999999:
         maxY = 1.48*max([h.GetMaximum() for h in Objs])
     if Logy:
-        minY = 0.0005
+        if minY <= 0:
+            minY = 0.0005
         maxY = 2.2*maxY
         axes.set_yscale("log", nonposx='clip')
         
@@ -223,7 +226,11 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
             axes.set_ylabel(Ylabel, ha='right', y=1)
             rplt.hist(obj,Objsed=False,axes=axes,logy=Logy,linewidth=1.5)
             h, l = axes.get_legend_handles_labels()
-            patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth(), alpha=alpha, linestyle = obj.GetLineStyle('mpl')))
+            if any(obj.GetFillStyle() == style for style in [0, 1001]):
+                patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth(), alpha=alpha, linestyle = obj.GetLineStyle('mpl')))
+            else:
+                patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth(), alpha=alpha, linestyle = obj.GetLineStyle('mpl'), 
+                                            hatch = obj.GetFillStyle('mpl')))
             name.append(l[-1])
             continue
         elif isinstance(obj, ROOT.TH2):

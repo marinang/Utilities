@@ -10,7 +10,6 @@ import glob
 import os
 import math
 import numpy as np
-from root_numpy import array2tree, tree2array, root2array, array2root, hist2array
 from rootpy import asrootpy
 from rootpy.plotting import Hist
 import matplotlib.pyplot as plt
@@ -40,6 +39,48 @@ RooConstVar   = ROOT.RooConstVar
 RooChebychev  = ROOT.RooChebychev
 RooArgusBG    = ROOT.RooArgusBG
 RooExponential= ROOT.RooExponential
+
+class RooDataset(object):
+    
+    def __init__(self, Name, RooVar):
+        
+        self.var  = RooVar
+        self.data = RooDataSet( Name, Name, RooArgSet(self.var))
+        
+    def fill(self, array):
+        
+        for ai in array:
+            self.var.setVal(ai)
+            self.data.add(RooArgSet(self.var))
+            
+    def Print(self, option):
+            
+        self.data.Print( option )
+        
+    def to_wspace(self, wspace ):
+        
+        if not wspace.allVars().contains(self.var):
+            "Print the RooRealVar dubbed {0} is added to the working space {1}!".format( self.var.GetName(), wspace.GetName())
+            wspace.rfimport(self.var)  
+            
+        wspace.rfimport( self.data )
+        
+def RemoveEmptyBins(frame,hist_name="0"):
+
+    # histname=0 means that the last RooHist is taken from the RooPlot
+
+    hist = frame.findObject(hist_name,ROOT.RooHist.Class())
+
+    x = hist.GetX()
+    y = hist.GetY()
+    
+    import math
+
+    for i in range(hist.GetN()):
+        if math.fabs(y[i] < 0.0000001) and (hist.GetErrorYhigh(i) > 0.):
+            hist.SetPointEYlow(i,0)
+            hist.SetPointEYhigh(i,0)
+        
 
 def DataSet(Input,RooVar,DataSetName,Variable=None,Treename='DecayTree',Selection='',Wspace=None,Scale=1):
     
@@ -73,35 +114,7 @@ def DataSet(Input,RooVar,DataSetName,Variable=None,Treename='DecayTree',Selectio
 
     return dataSet
     
-#class Frame(object):
-#    def __init__(self, Var, nBins, xMin=None, xMax=None):
-#        self.var = Var
-#        self.nbins = nBins
-#        if xMin is None:
-#            xMin = Var.getMin()
-#        if xMax is None:
-#            xMax = Var.getMax()
-#        self.xmin = xMin
-#        self.xmax = xMax
-#        self.Histograms = []
-#        self.Curves = []
-#        self.frame = Var.frame(nBins, xMin, xMax)
-#        self.chisq = None
-#        
-#    def PlotIn(self, Object, *args):
-#        
-#        Object.plotOn(self.frame, *args)
-#        
-#        if isinstance(Object, ROOT.RooAbsData):
-#            self.Histograms.append(Object)
-#        elif isinstance(Object, ROOT.RooAbsPdf):
-#            self.Curves.append(Object)
-#            
-#    def ChiSquare(self, FloatPars):
-#        self.chisq = self.frame.chiSquare(FloatPars)
-#        return self.chisq
-
-
+    
 class ResidualPlot(object):
     def __init__(self, title, frame):
         self.title = title
