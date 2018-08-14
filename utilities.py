@@ -5,6 +5,7 @@
 
 from .dependencies import softimport
 import math
+import sys
 
 
 def destruct_objects(*args):
@@ -101,6 +102,9 @@ def dicttoarray( arraydict ):
             _dtype = np.dtype(np.object)
             
         formats.append(_dtype)
+        
+    if sys.version_info[0] > 2:
+        names = [n.decode() for n in names]
     
     dtypes = {'names': names, 'formats': formats}
     shape  = (len(list(arraydict.values())[0]),)
@@ -109,13 +113,18 @@ def dicttoarray( arraydict ):
         
     for k in arraydict.keys():
         
+        if sys.version_info[0] > 2:
+            k_new_array = k.decode()
+        else:
+            k_new_array = k
+        
         if isinstance(arraydict[k], uproot.interp.jagged.JaggedArray):
             _array = jaggedtoarray(arraydict[k])
         else:
             _array = arraydict[k]
                     
         try:
-            array[k] = _array
+            array[k_new_array] = _array
         except ValueError:
             print(k)
             print(type(_array))
