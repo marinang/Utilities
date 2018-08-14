@@ -7,13 +7,14 @@ from __future__ import division
 import ROOT
 from .Tree import readTree
 from array import *
-from root_numpy import root2array, tree2array, fill_hist, fill_profile
 import numpy as np
 from skhep import units
 from Utilities.utilities import destruct_objects
 
 import sys
 from rootpy.plotting import Hist, Graph, Hist2D, Profile, Hist3D
+import uproot
+import histbook
 
 class BinningScheme:
     
@@ -23,7 +24,7 @@ class BinningScheme:
         self.Xmax = xmax
         
     def addUniformBins(self, nBins, xmin, xmax):
-        
+
         overlap = False
         common_min = False
         common_max = False
@@ -191,6 +192,23 @@ def InputFile(file, selection, treename, debug=False):
     else:
         print(" Error, no valid TFile nor Ttree provided! Check the name, treename etc ... ")
         
+        
+#def Hist( name, title="", **kwargs):
+#
+#    if set(['nbins', 'xmin', 'xmax']).issubset(kwargs.keys()):
+#        nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
+#        hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
+#        
+#    elif set(['bin_scheme']).issubset(kwargs.keys()):
+#        bin_scheme = kwargs["bin_scheme"]
+#        hist = Hist(bin_scheme.ReturnBins(),name=name,title=name,type='F')
+#        
+#    elif set(['bins']).issubset(kwargs.keys()):
+#        bins = kwargs["bins"]
+#        hist = Hist(bins,name=name,title=name,type='F')
+#        
+#    return hist
+                
 def GetHist(input, variable, name="", selection="", treename='DecayTree', weights=None,  **kwargs):
 
     if name == "":
@@ -331,16 +349,12 @@ def Get2DHist(input, variables, name, selection="", treename='DecayTree', weight
     array_to_fill[:,0] = array[varx]
     array_to_fill[:,1] = array[vary]
     
-    print array_to_fill
-    
     if weights:
         hist.Sumw2()
         fill_hist(hist,array_to_fill,array[weights])
     else:
         fill_hist(hist,array_to_fill)
-        
-    print hist.Integral()
-    
+            
     return hist
         
 def Get3DHist(input, variables, name, selection="", treename='DecayTree', weights=None, scale = 1.,  **kwargs):
