@@ -3,28 +3,38 @@
 # @author Matthieu Marinangeli (matthieu.marinangeli@epfl.ch)
 # @date   2016-11-09
 
-import ROOT
+from Utilities.dependencies import softimport
+
+ROOT = softimport("ROOT")
 import glob
 import os
+import numpy as np
+probfit = softimport("probfit")
+iminuit = softimport("iminuit")
+from scipy.stats import chisquare
+
+import logging 
+mpl_logger = logging.getLogger('matplotlib') 
+mpl_logger.setLevel(logging.WARNING) 
 
 from .Hist import EffHist
 import matplotlib as mpl
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import rootpy.plotting.root2matplotlib as rplt
 from future.utils import iteritems
-
 
 def LHCbStyle():
     
     STYLE = {}
 
     STYLE['figure.figsize'] = 8.75, 5.92
-    STYLE['figure.dpi'] = 300
+    STYLE['figure.dpi'] = 100
 
     STYLE['font.family'] = 'sans-serif'
     STYLE['font.serif'] =  'Times New Roman'
-    STYLE['font.size'] =   2
+    STYLE['font.size'] =   14
     STYLE['font.weight'] = 500
     STYLE['font.style'] = 'normal'
 
@@ -32,7 +42,7 @@ def LHCbStyle():
     STYLE['legend.handletextpad'] = 0.3
     STYLE['legend.numpoints'] =     1
     STYLE['legend.labelspacing'] =  0.3
-    STYLE['legend.fontsize'] =      17
+    STYLE['legend.fontsize'] =      16
 
     STYLE['lines.linewidth'] =       1.4
     STYLE['lines.markeredgewidth'] = 1.4
@@ -44,22 +54,22 @@ def LHCbStyle():
     STYLE['savefig.pad_inches'] = 0.1
     STYLE['savefig.dpi'] = 800
     
-    STYLE['axes.labelsize'] = 20
-    STYLE['axes.linewidth'] = 1.8
+    STYLE['axes.labelsize'] = 16
+    STYLE['axes.linewidth'] = 1.4
     STYLE['axes.labelweight'] = 500
 
-    STYLE['xtick.major.size'] =  11
-    STYLE['xtick.minor.size'] =  6
-    STYLE['xtick.major.width'] = 2
-    STYLE['xtick.minor.width'] = 2
+    STYLE['xtick.major.size'] =  6
+    STYLE['xtick.minor.size'] =  3
+    STYLE['xtick.major.width'] = 1.6
+    STYLE['xtick.minor.width'] = 1.6
     STYLE['xtick.major.pad'] =   10
     STYLE['xtick.minor.pad'] =   10
     STYLE['xtick.labelsize'] =   17
 
-    STYLE['ytick.major.size'] =  11
-    STYLE['ytick.minor.size'] =  6
-    STYLE['ytick.major.width'] = 1.8
-    STYLE['ytick.minor.width'] = 1.8
+    STYLE['ytick.major.size'] =  6
+    STYLE['ytick.minor.size'] =  3
+    STYLE['ytick.major.width'] = 1.4
+    STYLE['ytick.minor.width'] = 1.4
     STYLE['ytick.major.pad'] =   10
     STYLE['ytick.minor.pad'] =   10
     STYLE['ytick.labelsize'] =   17
@@ -197,7 +207,7 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
         if minY <= 0:
             minY = 0.0005
         maxY = 2.2*maxY
-        axes.set_yscale("log", nonposx='clip')
+        axes.set_yscale("log")
         
     if not Xlabel:
         Xlabel = Objs[0].GetXaxis().GetTitle()
@@ -208,8 +218,6 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
         if Err or isinstance(obj, ROOT.TGraphAsymmErrors):
             axes.set_xlabel(Xlabel, ha='right', x=1)
             axes.set_ylabel(Ylabel, ha='right', y=1)
-            if Logy:
-                axes.set_yscale("log", nonposy='clip')
             if not Ylabel:
                 Ylabel = Objs[0].GetYaxis().GetTitle()  
             axes.set_ylabel(Ylabel, ha='right', y=1)
@@ -282,8 +290,120 @@ def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=
         fig.savefig(os.path.join('images',Folder,FileName))
         print("Figure {0} has been created".format(os.path.join('images',Folder,FileName))) 
         plt.close(fig)
+        
+def plotFitResult( cost_function, minuit, y_label, x_label, description = {}, nbins = 100, plot_residuals = True, logy = False, 
+                   chi2_pos = (0.7, 0.5), show_params = False, params_loc = (0.05, 0.95), legend_pos = "best", 
+                   xlimit = (-999999,999999), ylimit = (-999999,999999), **kwargs ):
+                
+    #compute chisquare
+    ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(minuit, parts=False, bins = nbins, nfbins = nbins)
     
+    chi2 = chisquare(datay, total_pdf_y)[0]
+    ndof = nbins - 1 + len(iminuit.describe(cost_function)) -1
+    chi2ndof = chi2  / ndof
     
+    #plotting
+    ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(minuit, parts=True, bins = nbins, nfbins = 500)
+    
+    if logy:
+        ymin = ylimit[0] if ylimit[0] != -999999 else 0.01
+        ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*10
+    else:
+        ymin = ylimit[0] if ylimit[0] != -999999 else min(datay)
+        ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*1.2
+        
+    xmin = xlimit[0] if xlimit[0] != -999999 else min(data_edges)
+    xmax = xlimit[1] if xlimit[1] !=  999999 else max(data_edges)
+            
+    LHCbStyle()
+
+    if plot_residuals:
+        f = plt.figure()
+        gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
+        ax1 = plt.subplot(gs[0])
+    else:
+        f, ax1 = plt.subplots()
+        
+    ax1.set_xticklabels([])
+    ax1.axes.set_ylabel(y_label, ha = "right", y=1)
+    ax1.axes.set_xlim((xmin,xmax))
+    ax1.axes.set_ylim((ymin,ymax))
+    if not plot_residuals:
+        ax1.axes.set_xlabel(x_label, ha='right', x=1)
+
+    # plot data
+    xerr = np.diff(data_edges)/2
+    
+    if not "data" in description.keys():
+        description["data"] = {"color": "black", "label": "Data"}
+    datacolor = description["data"].get("color","black")
+    datalabel = description["data"].get("label","Data")
+    _ = ax1.errorbar(probfit.mid(data_edges), datay, yerr = errorp, xerr = xerr, fmt='.', capsize=0, color=datacolor, label=datalabel, markersize = 6)
+    # plot model
+    if not "fullmodel" in description.keys():
+        description["fullmodel"] = {"color": "blue", "label": "Full model"}
+    fmodelcolor = description["fullmodel"].get("color","blue")
+    fmodellabel = description["fullmodel"].get("label","Full model")
+    _ = ax1.plot(total_pdf_x, total_pdf_y, color=fmodelcolor, lw=2, label=fmodellabel)
+    
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+        
+    for i,part in enumerate(parts):
+        if not f"model_{i}" in description.keys():
+            description[f"model_{i}"] = {"color": colors[i], "label": f"model_{i}"}
+        _color = description[f"model_{i}"].get("color",colors[i])
+        _label = description[f"model_{i}"].get("label",f"model_{i}")
+        x, y = part
+        _ = ax1.plot(x, y, ls='--', color=_color, label=_label)
+    
+    ax1.get_yaxis().set_tick_params(direction='in', left=True, right=True)
+    ax1.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
+    ax1.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
+    ax1.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+    ax1.minorticks_on()
+    ax1.legend(loc=legend_pos)
+    ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
+    
+    if logy:
+        ax1.set_yscale("log", nonposy='clip')
+        
+    if show_params:
+        values = minuit.values
+        errors = minuit.errors
+        to_print = []
+        
+        for k in values.keys():
+            to_print.append(rf"{k} = {values[k]:.3f} $\pm$ {errors[k]:.3f}")
+            
+        to_print = '\n'.join(to_print)
+        
+        props = dict(boxstyle='square', facecolor='None')
+        
+        ax1.text(params_loc[0], params_loc[1], to_print, transform=ax1.transAxes, verticalalignment='top', bbox = props)
+            
+    
+    if plot_residuals:
+
+        ax2 = plt.subplot(gs[1])
+        ax2.axes.set_ylim((-5,5))
+        ax2.axes.set_xlim((xmin,xmax))
+        ax2.axes.set_ylabel("Pulls")
+        ax2.axes.set_xlabel(x_label, ha ='right', x=1)
+        ax2.get_yaxis().set_tick_params(direction='in', left=True, right=True)
+        ax2.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
+        ax2.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
+        ax2.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+        ax2.plot([xmin, xmax], [2, 2], color = "indianred", lw=1.5, linestyle = '-.')
+        ax2.plot([xmin, xmax], [0, 0], color = "grey", lw=1.5, linestyle = '-.')
+        ax2.plot([xmin, xmax], [-2, -2], color = "indianred", lw=1.5, linestyle = '-.')
+        ax2.minorticks_on()
+        cost_function.draw_residual(minuit, show_errbars=True, errbar_algo='sumw2', norm=True, ax = ax2, mec='Black', mfc='Black', 
+                                          ecolor = 'Black', markersize = 6, bins = nbins, zero_line = False)
+        
+    f.align_ylabels()
+                                    
+        
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
     LHCbStyle()

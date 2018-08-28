@@ -10,6 +10,7 @@ from array import *
 import numpy as np
 from skhep import units
 from Utilities.utilities import destruct_objects
+from skhep.dataset.numpydataset import *
 
 import sys
 from rootpy.plotting import Hist, Graph, Hist2D, Profile, Hist3D
@@ -77,7 +78,7 @@ class BinningScheme:
     def nBins(self):
         
         return len(self.Bins) - 1
-        
+                    
 class EffHist(ROOT.TH1F):
     
     def __init__(self, name, variable, scale=1, **kwargs):
@@ -208,6 +209,25 @@ def InputFile(file, selection, treename, debug=False):
 #        hist = Hist(bins,name=name,title=name,type='F')
 #        
 #    return hist
+
+def fill_hist(hist, array, weights = None):
+        
+    if isinstance(weights, np.ndarray):
+        for a,w in np.nditer([array,weights]):
+            hist.Fill(a,w)
+    else:
+        for a in np.nditer(array):
+            hist.Fill(a)
+                
+def fill_hist3d(hist, array, weights = None):
+
+    if isinstance(weights, np.ndarray):
+        for a0, a1, a2, w in np.nditer([array[:,0],array[:,1],array[:,2],weights]):
+            hist.Fill(a0, a1, a2, w)
+    else:
+        for a0, a1, a2 in np.nditer([array[:,0],array[:,1],array[:,2]]):
+            hist.Fill(a0, a1, a2)
+        
                 
 def GetHist(input, variable, name="", selection="", treename='DecayTree', weights=None,  **kwargs):
 
@@ -232,7 +252,13 @@ def GetHist(input, variable, name="", selection="", treename='DecayTree', weight
             array = input
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
-        
+    elif isinstance(input, NumpyDataset):
+        if selection != "":
+            array = input.select(selection)
+        else:
+            array = input
+        array = array[branches]
+                
     if set(['nbins', 'xmin', 'xmax']).issubset(kwargs.keys()):
         nbins, xmin, xmax = kwargs["nbins"], kwargs["xmin"], kwargs["xmax"]
         hist = Hist(nbins,xmin,xmax,name=name,title=name,type='F')
@@ -244,7 +270,7 @@ def GetHist(input, variable, name="", selection="", treename='DecayTree', weight
     elif set(['bins']).issubset(kwargs.keys()):
         bins = kwargs["bins"]
         hist = Hist(bins,name=name,title=name,type='F')
-    
+            
     if weights:
         hist.Sumw2()
         fill_hist(hist,array[variable],array[weights])
@@ -386,6 +412,12 @@ def Get3DHist(input, variables, name, selection="", treename='DecayTree', weight
             array = input
     elif isinstance(input,ROOT.TTree):
         array = tree2array(input,branches,selection)
+    elif isinstance(input, NumpyDataset):
+        if selection != "":
+            array = input.select(selection)
+        else:
+            array = input
+        array = array[branches]
         
     BINS = []
         
@@ -412,9 +444,9 @@ def Get3DHist(input, variables, name, selection="", treename='DecayTree', weight
     
     if weights:
         hist.Sumw2()
-        fill_hist(hist,array_to_fill,array[weights])
+        fill_hist3d(hist,array_to_fill,array[weights])
     else:
-        fill_hist(hist,array_to_fill)
+        fill_hist3d(hist,array_to_fill)
     
     return hist
     
