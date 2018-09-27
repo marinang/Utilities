@@ -314,7 +314,7 @@ def plotFitResult( cost_function, minuit, y_label, x_label, description = {}, nb
         
     xmin = xlimit[0] if xlimit[0] != -999999 else min(data_edges)
     xmax = xlimit[1] if xlimit[1] !=  999999 else max(data_edges)
-            
+                
     LHCbStyle()
 
     if plot_residuals:
