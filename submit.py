@@ -12,6 +12,7 @@ import subprocess as sub
 import random
 from datetime import datetime
 import time
+import commands
 
 now = datetime.now()
 random.seed(now.day)
@@ -40,7 +41,7 @@ class AttrDict(dict):
                    "noscript": False,
                    "m_cpu":     4000,
                    "m_time":    20,
-                   "m_exclude": 0,
+                   "exclude": 0,
                    "m_nodes2exclude": [],
                    "infiles": "",
                    "express":  False }
@@ -91,12 +92,19 @@ def IsSlurm():
     
     # Check if there is a slurm batch system
     
-    try:
-        sub.Popen(['squeue'], stdout=sub.PIPE)
-    except OSError:
-        return False
-    else:
+    exitcode = commands.getstatusoutput("squeue")[0]
+        
+    if exitcode == 0:
         return True
+    else:
+        return False
+    
+#    try:
+#        sub.Popen(['squeue'], stdout=sub.PIPE)
+#    except OSError:
+#        return False
+#    else:
+#        return True
         
 def PrepareSlurmJob( Options, Dirname ):
     
@@ -133,7 +141,7 @@ def PrepareSlurmJob( Options, Dirname ):
     if Options.express:
        fo.write("#SBATCH --qos=express\n")
     
-    exclude = Options.m_exclude
+    exclude = Options.exclude
     nodestoexclude = Options.m_nodes2exclude
     
     if exclude != 0 or len(nodestoexclude) > 0:        
@@ -176,17 +184,40 @@ def PrepareSlurmJob( Options, Dirname ):
     
     command = "sbatch "+Dirname+"/run.sh"
     return command
-    
+        
 def SendCommand( command ):
-        
+    
     if sys.version_info[0] > 2:
-        process = sub.Popen( command, shell = True, stdout=sub.PIPE, stderr=sub.PIPE, encoding='utf8')
+        out = sub.check_output( command, shell = True, encoding='utf8')
     else:
-        process = sub.Popen( command, shell = True, stdout=sub.PIPE, stderr=sub.PIPE )
-        
-    time.sleep(0.03)
-    out, err = process.communicate()
-            
+        out = sub.check_output( command, shell = True)
+    
+#    
+#    output=check_output("dmesg | grep hda", shell=True)
+#    
+#    OK = False
+#    
+#    while OK == False:
+#            
+#        try:
+#    
+#            if sys.version_info[0] > 2:
+#                process = sub.Popen( command, shell = True, stdout=sub.PIPE, encoding='utf8')
+#            else:
+#                process = sub.Popen( command, shell = True, stdout=sub.PIPE)
+#            
+#        except OSError, err:
+#        
+#            print("Wait a bit, Resource temporarily unavailable")
+#            time.sleep(15)
+#            continue
+#            
+#        OK = True
+#                
+#    time.sleep(0.03)    
+#    process.wait()
+#    out, _ = process.communicate()
+#            
     return out
     
 def main(opts):
@@ -343,7 +374,7 @@ if __name__ == "__main__" :
         help="Memory per cpu (Slurm).")
     parser.add_argument("-time", default=20, dest="m_time", type=int,
         help="Maximum time of the job in hours (Slurm).")
-    parser.add_argument("-exclude", default=0, dest="m_exclude", type=int,
+    parser.add_argument("-exclude", default=0, dest="exclude", type=int,
         help="Number of nodes to exclude (Slurm).")
     parser.add_argument("-nodes2exclude", default=[], dest="m_nodes2exclude", type=str,
         help="Nodes to exclude (Slurm).", nargs="+")

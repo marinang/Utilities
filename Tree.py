@@ -12,10 +12,6 @@ import math
 import numpy as np
 root_numpy = softimport("root_numpy")
 
-#class TTree(object):
-#    
-#    
-
 class tchain(object):
     
     def __init__(self, name, files = [], nevents = ""):
@@ -28,6 +24,9 @@ class tchain(object):
             self._nevents = 0
         else:
             self.__nevents = False
+            
+        if not isinstance(files, list):
+            files = [files]
         
         for f in files:
             self.chain.Add(f)
@@ -45,6 +44,12 @@ class tchain(object):
             return self._nevents
         else:
             return self.chain.GetEntries()
+            
+    def select(self, selection=""):
+        
+        new_tree = self.chain.CopyTree(selection)
+        
+        return ttree(new_tree)
     
     def neventsfile(self, _file):
         _f = ROOT.TFile( _file, "READ" )
@@ -72,7 +77,7 @@ class tchain(object):
         
         chain = self.chain.CopyTree("")
                 
-        if treename == "":
+        if treename != "":
             chain.SetName(treename)
             
         if self.__nevents:
@@ -88,6 +93,27 @@ class tchain(object):
         f.Close()
         
         print("TChain {0} written into {1}".format( self.name, filename ))
+        
+        
+class ttree(object):
+    
+    def __init__(self, tree):
+        
+        self.tree = tree
+        
+    def tofile(self, filename, treename = ""):
+        
+        f = ROOT.TFile(filename, "recreate")
+
+        tree = self.tree.CopyTree("")
+        
+        if treename != "":
+            tree.SetName(treename)
+        
+        f.Write()
+        f.Close()
+        
+        print("TTree written into {0}".format( filename ))
         
 
 
