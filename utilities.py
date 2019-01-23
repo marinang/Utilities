@@ -6,8 +6,22 @@
 from .dependencies import softimport
 import math
 import sys
+import numpy as np
+from numba import jit, prange
 
-
+@jit(nopython=True, parallel=True)
+def flatten(toflatten, flattening_dist, low_val):
+    flattening_dist = flattening_dist[flattening_dist >= low_val]
+    n = flattening_dist.shape[0]
+        
+    toflatten = toflatten[toflatten >= low_val]
+    dist = np.zeros(toflatten.shape)
+    for k in prange(dist.shape[0]):
+        v = toflatten[k]
+        dist[k] = flattening_dist[flattening_dist <= v].shape[0] / n
+        
+    return dist
+    
 def destruct_objects(*args):
     """Destruct an object inheriting from TObject.
 
