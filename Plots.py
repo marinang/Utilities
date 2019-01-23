@@ -17,12 +17,12 @@ import logging
 mpl_logger = logging.getLogger('matplotlib') 
 mpl_logger.setLevel(logging.WARNING) 
 
-from .Hist import EffHist
+Hist = softimport(".Hist")
 import matplotlib as mpl
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-import rootpy.plotting.root2matplotlib as rplt
+rootpy = softimport("rootpy.plotting.root2matplotlib")
 from future.utils import iteritems
 
 def LHCbStyle():
@@ -42,7 +42,7 @@ def LHCbStyle():
     STYLE['legend.handletextpad'] = 0.3
     STYLE['legend.numpoints'] =     1
     STYLE['legend.labelspacing'] =  0.3
-    STYLE['legend.fontsize'] =      16
+    STYLE['legend.fontsize'] =      12
 
     STYLE['lines.linewidth'] =       1.4
     STYLE['lines.markeredgewidth'] = 1.4
@@ -85,7 +85,7 @@ def Decorate(Objs, Filled=False, Legend=None, Normalized=False, Err=False, Candl
     new_Objs = []
     
     for h in Objs:
-        if isinstance(h, EffHist):
+        if isinstance(h, Hist.EffHist):
             gr = h.return_TGraphAsymmErrors(MPL)
             new_Objs.append(gr)
         else:
@@ -192,17 +192,19 @@ def Draw(Dict, Logy=False, Err=False, minY=-999999, maxY=999999, Candle=False):
     if leg:
         leg.Draw()
         
-def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None, xlimit = (-999999,999999), ylimit = (-999999,999999)):
+def DrawMPL(Dicts, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=None, xlimit = (-999999,999999), ylimit = (-999999,999999)):
+    
+    rplt = rootpy.plotting.root2matplotlib
 
-    Objs = Dict.get('objs')
+    Objs = Dicts
     
     minY, maxY = ylimit[0], ylimit[1]
     minX, maxX = xlimit[0], xlimit[1]
 
     if minY == -999999:
-        minY = min([h.GetMinimum() for h in Objs])
+        minY = min([h["hist"].GetMinimum() for h in Objs])
     if maxY == 999999:
-        maxY = 1.48*max([h.GetMaximum() for h in Objs])
+        maxY = 1.48*max([h["hist"].GetMaximum() for h in Objs])
     if Logy:
         if minY <= 0:
             minY = 0.0005
@@ -210,21 +212,24 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
         axes.set_yscale("log")
         
     if not Xlabel:
-        Xlabel = Objs[0].GetXaxis().GetTitle()
+        Xlabel = Objs[0]["hist"].GetXaxis().GetTitle()
  
     patch, name = [],[]
-    for obj in Objs:
+    for objs in Objs:
         
-        if Err or isinstance(obj, ROOT.TGraphAsymmErrors):
+        obj = objs["hist"]
+        
+        
+        if objs.get("err",False) or isinstance(obj, ROOT.TGraphAsymmErrors):
             axes.set_xlabel(Xlabel, ha='right', x=1)
             axes.set_ylabel(Ylabel, ha='right', y=1)
             if not Ylabel:
                 Ylabel = Objs[0].GetYaxis().GetTitle()  
             axes.set_ylabel(Ylabel, ha='right', y=1)
-            rplt.errorbar(obj,axes=axes,emptybins=False)
+            rplt.errorbar(obj,axes=axes,emptybins=False, )
             h, l = axes.get_legend_handles_labels()
             patch.append(h[-1])
-            name.append(l[-1])
+            name.append(obj.GetTitle())
             continue
         elif isinstance(obj, ROOT.TH1):
             alpha = getattr(obj, 'alpha', None)
@@ -239,7 +244,7 @@ def DrawMPL(Dict, axes, Logy=False, Err=False, Legend=True, Xlabel=None, Ylabel=
             else:
                 patch.append(mpatches.Patch(edgecolor=obj.GetLineColor('mpl'), facecolor=obj.GetFillColor('mpl'), linewidth=obj.GetLineWidth(), alpha=alpha, linestyle = obj.GetLineStyle('mpl'), 
                                             hatch = obj.GetFillStyle('mpl')))
-            name.append(l[-1])
+            name.append(obj.GetTitle())
             continue
         elif isinstance(obj, ROOT.TH2):
             axes.set_xlabel(Xlabel, ha='right', x=1)
@@ -291,20 +296,29 @@ def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=
         print("Figure {0} has been created".format(os.path.join('images',Folder,FileName))) 
         plt.close(fig)
         
-def plotFitResult( cost_function, minuit, y_label, x_label, description = {}, nbins = 100, plot_residuals = True, logy = False, 
-                   chi2_pos = (0.7, 0.5), show_params = False, params_loc = (0.05, 0.95), legend_pos = "best", 
-                   xlimit = (-999999,999999), ylimit = (-999999,999999), **kwargs ):
+def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, nbins=100, plot_residuals=True, logy=False, 
+                   chi2_pos=(0.7, 0.5), show_params=False, params_loc=(0.05, 0.95), legend_pos="best", 
+                   xlimit=(-999999,999999), ylimit=(-999999,999999), **kwargs ):
+                    
+    values = fitresult["values"]
+    errors = fitresult["errors"]
                 
     #compute chisquare
-    ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(minuit, parts=False, bins = nbins, nfbins = nbins)
+    ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=False, bins=nbins, nfbins=nbins, no_plot=True, args=values, errors=errors);
     
-    chi2 = chisquare(datay, total_pdf_y)[0]
-    ndof = nbins - 1 + len(iminuit.describe(cost_function)) -1
+    nfree_params = kwargs.get("nfree_params", len(iminuit.describe(cost_function)))
+    chi2 = chisquare(datay, total_pdf_y, nfree_params)[0]
+    ndof = nbins - 1 + nfree_params
+    print(chi2, ndof)
     chi2ndof = chi2  / ndof
     
     #plotting
-    ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(minuit, parts=True, bins = nbins, nfbins = 500)
-    
+    try:
+        ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=True, bins=nbins, nfbins=500, bound=xlimit, no_plot=True,
+                                                                                                        args=values, errors=errors);
+    except TypeError:
+        ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=False, bins=nbins, nfbins=500, bound=xlimit, no_plot=True,
+                                                                                                        args=values, errors=errors);
     if logy:
         ymin = ylimit[0] if ylimit[0] != -999999 else 0.01
         ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*10
@@ -369,8 +383,6 @@ def plotFitResult( cost_function, minuit, y_label, x_label, description = {}, nb
         ax1.set_yscale("log", nonposy='clip')
         
     if show_params:
-        values = minuit.values
-        errors = minuit.errors
         to_print = []
         
         for k in values.keys():
@@ -398,8 +410,8 @@ def plotFitResult( cost_function, minuit, y_label, x_label, description = {}, nb
         ax2.plot([xmin, xmax], [0, 0], color = "grey", lw=1.5, linestyle = '-.')
         ax2.plot([xmin, xmax], [-2, -2], color = "indianred", lw=1.5, linestyle = '-.')
         ax2.minorticks_on()
-        cost_function.draw_residual(minuit, show_errbars=True, errbar_algo='sumw2', norm=True, ax = ax2, mec='Black', mfc='Black', 
-                                          ecolor = 'Black', markersize = 6, bins = nbins, zero_line = False)
+        cost_function.draw_residual(show_errbars=True, errbar_algo='sumw2', norm=True, ax=ax2, mec='Black', mfc='Black', 
+                                    ecolor='Black', markersize=6, bins=nbins, zero_line=False, bound=xlimit, args=values, errors=errors)
         
     f.align_ylabels()
                                     
