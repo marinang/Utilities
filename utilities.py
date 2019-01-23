@@ -78,6 +78,7 @@ def dicttoarray( arraydict ):
     
     np     = softimport("numpy")
     uproot = softimport("uproot")
+    awkward = softimport("awkward")
     
     """Convert a dictionnary into a structured array."""
     
@@ -117,8 +118,8 @@ def dicttoarray( arraydict ):
             k_new_array = k.decode()
         else:
             k_new_array = k
-        
-        if isinstance(arraydict[k], uproot.interp.jagged.JaggedArray):
+
+        if isinstance(arraydict[k], awkward.array.jagged.JaggedArray):
             _array = jaggedtoarray(arraydict[k])
         else:
             _array = arraydict[k]
