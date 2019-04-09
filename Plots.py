@@ -54,7 +54,7 @@ def LHCbStyle():
     
     STYLE['errorbar.capsize'] =      1.3
 
-#    STYLE['savefig.bbox'] = 'tight'
+    STYLE['savefig.bbox'] = 'tight'
     STYLE['savefig.pad_inches'] = 0.1
     STYLE['savefig.dpi'] = 250
     
