@@ -25,6 +25,10 @@ import matplotlib.gridspec as gridspec
 rootpy = softimport("rootpy.plotting.root2matplotlib")
 from future.utils import iteritems
 
+zfit = softimport("zfit")
+physt = softimport("physt")
+from uncertainties import unumpy
+
 def LHCbStyle():
     
     STYLE = {}
@@ -50,9 +54,9 @@ def LHCbStyle():
     
     STYLE['errorbar.capsize'] =      1.3
 
-    STYLE['savefig.bbox'] = 'tight'
+#    STYLE['savefig.bbox'] = 'tight'
     STYLE['savefig.pad_inches'] = 0.1
-    STYLE['savefig.dpi'] = 800
+    STYLE['savefig.dpi'] = 250
     
     STYLE['axes.labelsize'] = 16
     STYLE['axes.linewidth'] = 1.4
@@ -399,7 +403,7 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
 
         ax2 = plt.subplot(gs[1])
         ax2.axes.set_ylim((-5,5))
-        ax2.axes.set_xlim((xmin,xmax))
+        ax2.axes.set_xlim((xmin, xmax))
         ax2.axes.set_ylabel("Pulls")
         ax2.axes.set_xlabel(x_label, ha ='right', x=1)
         ax2.get_yaxis().set_tick_params(direction='in', left=True, right=True)
@@ -414,7 +418,116 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
                                     ecolor='Black', markersize=6, bins=nbins, zero_line=False, bound=xlimit, args=values, errors=errors)
         
     f.align_ylabels()
-                                    
+    
+def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, plot_residuals=True, logy=False, 
+                   chi2_pos=(0.7, 0.5), show_params=False, params_loc=(0.05, 0.95), legend_pos="best", 
+                   xlimit=(-999999,999999), ylimit=(-999999,999999), units="GeV/c$^{2}$", **kwargs ):
+                
+    space = pdf.space
+    bounds = space.limit1d
+    data_hist = physt.h1(data, nbins, range=bounds)
+    datay = data_hist.frequencies
+    errory = data_hist.errors
+    bin_centers = data_hist.bin_centers
+    binwidth = space.area() / nbins
+    scale = np.sum(datay) * binwidth
+    
+    nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
+    pdfy = zfit.run(pdf.pdf(bin_centers, norm_range=bounds)) * scale
+    chi2 = chisquare(datay, pdfy, nfree_params)[0]
+    ndof = nbins - 1 + nfree_params
+    chi2ndof = chi2  / ndof
+                    
+    if logy:
+        ymin = ylimit[0] if ylimit[0] != -999999 else 0.01
+        ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*10
+        yscale = "log"
+    else:
+        ymin = ylimit[0] if ylimit[0] != -999999 else min(datay)
+        ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*1.2
+        yscale = ""
+        
+    x = np.linspace(*bounds, num=1000)
+    
+    LHCbStyle()
+
+    if plot_residuals:
+        f = plt.figure()
+        gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
+        ax1 = plt.subplot(gs[0])
+    else:
+        f, ax1 = plt.subplots()
+        
+    # plot data
+    if not "data" in description.keys():
+        description["data"] = {"color": "black", "label": "Data"}
+    datacolor = description["data"].get("color","black")
+    datalabel = description["data"].get("label","Data")
+    data_hist.plot(ax=ax1, kind="scatter", color=datacolor, errors=True, yscale=yscale,
+                   label=datalabel, s=6, xlabel=None)
+    
+    # plot model
+    if not "fullmodel" in description.keys():
+        description["fullmodel"] = {"color": "blue", "label": "Full model"}
+    fmodelcolor = description["fullmodel"].get("color","blue")
+    fmodellabel = description["fullmodel"].get("label","Full model")
+        
+    _ = ax1.plot(x, zfit.run(pdf.pdf(x, norm_range=bounds)) * scale, color=fmodelcolor, lw=2, label=fmodellabel)
+
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+        
+    try:
+        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
+            if not f"model_{i}" in description.keys():
+                description[f"model_{i}"] = {"color": colors[i], "label": f"model_{i}"}
+            _color = description[f"model_{i}"].get("color",colors[i])
+            _label = description[f"model_{i}"].get("label",f"model_{i}")
+            y = zfit.run(m.pdf(x, norm_range=bounds) * frac)  * scale
+            _ = ax1.plot(x, y, ls="--", color=_color, label=_label)
+    except AttributeError:
+        pass
+    
+    if y_label is None:
+        y_label=f"Candidates/({binwidth:.2f} {units})"
+        
+    ax1.set_xticklabels([])
+    ax1.axes.set_ylabel(y_label, ha = "right", y=1)
+    ax1.axes.set_xlim(bounds)
+    ax1.axes.set_ylim((ymin,ymax))
+    if not plot_residuals:
+        ax1.axes.set_xlabel(x_label, ha='right', x=1)
+        
+    ax1.get_yaxis().set_tick_params(direction='in', left=True, right=True)
+    ax1.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
+    ax1.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
+    ax1.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+    ax1.minorticks_on()
+    ax1.legend(loc=legend_pos)
+    ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
+    
+    if plot_residuals:
+
+        ax2 = plt.subplot(gs[1])
+        ax2.axes.set_ylim((-5,5))
+        ax2.axes.set_xlim(bounds)
+        ax2.axes.set_ylabel("Pulls")
+        ax2.axes.set_xlabel(x_label, ha ='right', x=1)
+        ax2.get_yaxis().set_tick_params(direction='in', left=True, right=True)
+        ax2.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
+        ax2.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
+        ax2.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+        ax2.plot(list(bounds), [2, 2], color = "indianred", lw=1.5, linestyle = '-.')
+        ax2.plot(list(bounds), [0, 0], color = "grey", lw=1.5, linestyle = '-.')
+        ax2.plot(list(bounds), [-2, -2], color = "indianred", lw=1.5, linestyle = '-.')
+        ax2.minorticks_on()
+        datay = unumpy.uarray(datay, errory)
+        errory = np.where(datay == 0., np.ones(errory.shape), errory)
+        pully = (datay - pdfy) / errory
+        ax2.errorbar(bin_centers, unumpy.nominal_values(pully), yerr=unumpy.std_devs(pully), fmt='.', ecolor='Black',
+                     markersize=6, color='Black')
+    
+    f.align_ylabels()
         
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
