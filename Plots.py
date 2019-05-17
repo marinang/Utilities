@@ -420,8 +420,8 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
     f.align_ylabels()
     
 def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, plot_residuals=True, logy=False, 
-                   chi2_pos=(0.7, 0.5), show_params=False, params_loc=(0.05, 0.95), legend_pos="best", 
-                   xlimit=(-999999,999999), ylimit=(-999999,999999), units="GeV/c$^{2}$", **kwargs ):
+                   chi2_pos=(0.7, 0.5), legend_pos="best", xlimit=(-999999,999999), ylimit=(-999999,999999), 
+                   units="GeV/c$^{2}$", **kwargs ):
                 
     space = pdf.space
     bounds = space.limit1d
@@ -452,9 +452,12 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     LHCbStyle()
 
     if plot_residuals:
-        f = plt.figure()
-        gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
-        ax1 = plt.subplot(gs[0])
+        if kwargs.get("ax1", None) is not None:
+            ax1 = kwargs["ax1"]
+        else:
+            f = plt.figure()
+            gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
+            ax1 = plt.subplot(gs[0])
     else:
         f, ax1 = plt.subplots()
         
@@ -483,7 +486,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
                 description[f"model_{i}"] = {"color": colors[i], "label": f"model_{i}"}
             _color = description[f"model_{i}"].get("color",colors[i])
             _label = description[f"model_{i}"].get("label",f"model_{i}")
-            y = zfit.run(m.pdf(x, norm_range=bounds) * frac)  * scale
+            y = zfit.run(m.pdf(x, norm_range=bounds) * frac) * scale
             _ = ax1.plot(x, y, ls="--", color=_color, label=_label)
     except AttributeError:
         pass
@@ -503,12 +506,16 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     ax1.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
     ax1.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
     ax1.minorticks_on()
-    ax1.legend(loc=legend_pos)
+    ax1.legend(loc=legend_pos, fontsize=kwargs.get("fontsize", 12))
     ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
     
     if plot_residuals:
-
-        ax2 = plt.subplot(gs[1])
+        
+        if kwargs.get("ax2", None) is not None:
+            ax2 = kwargs["ax2"]
+        else:
+            ax2 = plt.subplot(gs[1])
+            
         ax2.axes.set_ylim((-5,5))
         ax2.axes.set_xlim(bounds)
         ax2.axes.set_ylabel("Pulls")
@@ -527,7 +534,10 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         ax2.errorbar(bin_centers, unumpy.nominal_values(pully), yerr=unumpy.std_devs(pully), fmt='.', ecolor='Black',
                      markersize=6, color='Black')
     
-    f.align_ylabels()
+    try:
+        f.align_ylabels()
+    except UnboundLocalError:
+        pass
         
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
