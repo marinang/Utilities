@@ -430,7 +430,16 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     errory = data_hist.errors
     bin_centers = data_hist.bin_centers
     binwidth = space.area() / nbins
-    scale = np.sum(datay) * binwidth
+    
+    if pdf.is_extended:
+        N = zfit.run(pdf.integrate(bounds))
+    else:
+        N = np.sum(datay)
+        
+    scale = N * binwidth
+    
+    ledges = data_hist.bin_left_edges
+    redges = data_hist.bin_right_edges
     
     nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
     pdfy = zfit.run(pdf.pdf(bin_centers, norm_range=bounds)) * scale
@@ -479,7 +488,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
 
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
-        
+
     try:
         for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
             if not f"model_{i}" in description.keys():
