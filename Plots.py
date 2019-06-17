@@ -548,6 +548,11 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     except UnboundLocalError:
         pass
         
+    if plot_residuals:
+        return f, ax1, ax2
+    else:
+        return f, ax1
+        
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
     LHCbStyle()
