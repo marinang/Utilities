@@ -546,7 +546,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     
     try:
         f.align_ylabels()
-    except UnboundLocalError:
+    except (UnboundLocalError, AttributeError):
         pass
         
     return f, ax1, ax2
