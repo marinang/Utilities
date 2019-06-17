@@ -420,16 +420,15 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
     f.align_ylabels()
     
 def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, plot_residuals=True, logy=False, 
-                   chi2_pos=(0.7, 0.5), legend_pos="best", xlimit=(-999999,999999), ylimit=(-999999,999999), 
+                   chi2_pos=(0.7, 0.5), legend_pos="best", xlim=None, ylim=None, 
                    units="GeV/c$^{2}$", **kwargs ):
                 
-    space = pdf.space
-    bounds = space.limit1d
+    bounds = xlim if xlim else space.limit1d 
     data_hist = physt.h1(data, nbins, range=bounds)
     datay = data_hist.frequencies
     errory = data_hist.errors
     bin_centers = data_hist.bin_centers
-    binwidth = space.area() / nbins
+    binwidth = (bounds[1] - bounds[0]) / nbins
     
     if pdf.is_extended:
         N = zfit.run(pdf.integrate(bounds))
@@ -446,15 +445,14 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     chi2 = chisquare(datay, pdfy, nfree_params)[0]
     ndof = nbins - 1 + nfree_params
     chi2ndof = chi2  / ndof
-                    
-    if logy:
-        ymin = ylimit[0] if ylimit[0] != -999999 else 0.01
-        ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*10
-        yscale = "log"
-    else:
-        ymin = ylimit[0] if ylimit[0] != -999999 else min(datay)
-        ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*1.2
-        yscale = ""
+    
+    if not ylim:
+        if logy:
+            ylim = (min(datay), max(datay)*10.)
+        else:
+            ylim = (0.01, max(datay)*1.2)
+       
+    yscale = "log" if logy else ""             
         
     x = np.linspace(*bounds, num=1000)
     
@@ -463,6 +461,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     if plot_residuals:
         if kwargs.get("ax1", None) is not None:
             ax1 = kwargs["ax1"]
+            f = None
         else:
             f = plt.figure()
             gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
@@ -506,7 +505,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     ax1.set_xticklabels([])
     ax1.axes.set_ylabel(y_label, ha = "right", y=1)
     ax1.axes.set_xlim(bounds)
-    ax1.axes.set_ylim((ymin,ymax))
+    ax1.axes.set_ylim(ylim)
     if not plot_residuals:
         ax1.axes.set_xlabel(x_label, ha='right', x=1)
         
@@ -542,16 +541,15 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         pully = (datay - pdfy) / errory
         ax2.errorbar(bin_centers, unumpy.nominal_values(pully), yerr=unumpy.std_devs(pully), fmt='.', ecolor='Black',
                      markersize=6, color='Black')
+    else:
+        ax2 = None
     
     try:
         f.align_ylabels()
     except UnboundLocalError:
         pass
         
-    if plot_residuals:
-        return f, ax1, ax2
-    else:
-        return f, ax1
+    return f, ax1, ax2
         
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
