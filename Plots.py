@@ -423,7 +423,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
                    chi2_pos=(0.7, 0.5), legend_pos="best", xlim=None, ylim=None, 
                    units="GeV/c$^{2}$", **kwargs ):
                 
-    bounds = xlim if xlim else data.space.limit1d 
+    bounds = xlim if xlim else pdf.space.limit1d 
     data_hist = physt.h1(data, nbins, range=bounds)
     datay = data_hist.frequencies
     errory = data_hist.errors
