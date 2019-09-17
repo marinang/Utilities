@@ -475,22 +475,27 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     else:
         f, ax1 = plt.subplots()
         
-    toplot = []
-    toresiduals = []
-    for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
-        if m.is_extended:
-            _frac = (frac / IB) * (m.integrate(bounds) / m.get_yield())
-        else:
-            _frac = (frac / IB) * m.integrate(bounds)
-#        print(i, zfit.run(_frac), zfit.run(frac), zfit.run((frac / IB)), zfit.run(m.integrate(bounds) / pdf.get_yield()))
-#        print(i, zfit.run(_frac), zfit.run(frac))
-        y = zfit.run(m.pdf(x, norm_range=bounds) * _frac * scale)
-        yb = zfit.run(m.pdf(bin_centers, norm_range=bounds) * _frac * scale)
-        toplot.append(y)
-        toresiduals.append(yb)
+    try:
+        toplot = []
+        toresiduals = []
+        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
+            if m.is_extended:
+                _frac = (frac / IB) * (m.integrate(bounds) / m.get_yield())
+            else:
+                _frac = (frac / IB) * m.integrate(bounds)
+            y = zfit.run(m.pdf(x, norm_range=bounds) * _frac * scale)
+            yb = zfit.run(m.pdf(bin_centers, norm_range=bounds) * _frac * scale)
+            toplot.append(y)
+            toresiduals.append(yb)
 
-    
-    pdfy = np.sum(toresiduals, axis=0)
+        pdfy = np.sum(toresiduals, axis=0)
+        toplot = np.sum(toplot, axis=0)
+        
+    except AttributeError:
+        
+        pdfy = zfit.run(pdf.pdf(bin_centers, norm_range=bounds)) * scale
+        toplot = zfit.run(pdf.pdf(x, norm_range=bounds)) * scale
+        
     
     if chi2:
         nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
@@ -513,20 +518,17 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     fmodelcolor = description["fullmodel"].get("color","blue")
     fmodellabel = description["fullmodel"].get("label","Full model")
         
-#    _ = ax1.plot(x, zfit.run(pdf.pdf(x, norm_range=bounds)) * scale, color=fmodelcolor, lw=2, label=fmodellabel)
-    _ = ax1.plot(x, np.sum(toplot, axis=0), color=fmodelcolor, lw=2, label=fmodellabel)
+    _ = ax1.plot(x, toplot, color=fmodelcolor, lw=2, label=fmodellabel)
 
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
 
     try:
-#        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
         for i, (m, y) in enumerate(zip(pdf.get_models(), toplot)):
             if not f"model_{i}" in description.keys():
                 description[f"model_{i}"] = {"color": colors[i], "label": f"model_{i}"}
             _color = description[f"model_{i}"].get("color",colors[i])
             _label = description[f"model_{i}"].get("label",f"model_{i}")
-#            y = zfit.run(m.pdf(x, norm_range=bounds) * frac) * scale
             _ = ax1.plot(x, y, ls="--", color=_color, label=_label)
     except AttributeError:
         pass
