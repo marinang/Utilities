@@ -475,35 +475,6 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     else:
         f, ax1 = plt.subplots()
         
-    try:
-        toplot = []
-        toresiduals = []
-        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
-            if m.is_extended:
-                _frac = (frac / IB) * (m.integrate(bounds) / m.get_yield())
-            else:
-                _frac = (frac / IB) * m.integrate(bounds)
-            y = zfit.run(m.pdf(x, norm_range=bounds) * _frac * scale)
-            yb = zfit.run(m.pdf(bin_centers, norm_range=bounds) * _frac * scale)
-            toplot.append(y)
-            toresiduals.append(yb)
-
-        pdfy = np.sum(toresiduals, axis=0)
-        toplot = np.sum(toplot, axis=0)
-        
-    except AttributeError:
-        
-        pdfy = zfit.run(pdf.pdf(bin_centers, norm_range=bounds)) * scale
-        toplot = zfit.run(pdf.pdf(x, norm_range=bounds)) * scale
-        
-    
-    if chi2:
-        nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
-        chi2 = chisquare(datay, pdfy, nfree_params)[0]
-        ndof = nbins - 1 + nfree_params
-        chi2ndof = chi2  / ndof 
-        
-        
     # plot data
     if not "data" in description.keys():
         description["data"] = {"color": "black", "label": "Data"}
@@ -518,21 +489,44 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     fmodelcolor = description["fullmodel"].get("color","blue")
     fmodellabel = description["fullmodel"].get("label","Full model")
         
-    _ = ax1.plot(x, toplot, color=fmodelcolor, lw=2, label=fmodellabel)
-
-    prop_cycle = plt.rcParams['axes.prop_cycle']
-    colors = prop_cycle.by_key()['color']
-
     try:
+        toplot = []
+        toresiduals = []
+        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
+            if m.is_extended:
+                _frac = (frac / IB) * (m.integrate(bounds) / m.get_yield())
+            else:
+                _frac = (frac / IB) * m.integrate(bounds)
+            y = zfit.run(m.pdf(x, norm_range=bounds) * _frac * scale)
+            yb = zfit.run(m.pdf(bin_centers, norm_range=bounds) * _frac * scale)
+            toplot.append(y)
+            toresiduals.append(yb)
+            
+        _ = ax1.plot(x, np.sum(toplot, axis=0), color=fmodelcolor, lw=2, label=fmodellabel)
+        
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        colors = prop_cycle.by_key()['color']
+            
         for i, (m, y) in enumerate(zip(pdf.get_models(), toplot)):
             if not f"model_{i}" in description.keys():
                 description[f"model_{i}"] = {"color": colors[i], "label": f"model_{i}"}
             _color = description[f"model_{i}"].get("color",colors[i])
             _label = description[f"model_{i}"].get("label",f"model_{i}")
             _ = ax1.plot(x, y, ls="--", color=_color, label=_label)
-    except AttributeError:
-        pass
-    
+
+        pdfy = np.sum(toresiduals, axis=0)
+        
+    except AttributeError:        
+        pdfy = zfit.run(pdf.pdf(bin_centers, norm_range=bounds)) * scale
+        _ = ax1.plot(x, zfit.run(pdf.pdf(x, norm_range=bounds)) * scale, color=fmodelcolor, lw=2, label=fmodellabel)
+
+
+    if chi2:
+        nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
+        chi2 = chisquare(datay, pdfy, nfree_params)[0]
+        ndof = nbins - 1 + nfree_params
+        chi2ndof = chi2  / ndof 
+        
     if y_label is None:
         y_label=f"Candidates/({binwidth:.2f} {units})"
         
