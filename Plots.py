@@ -26,8 +26,16 @@ rootpy = softimport("rootpy.plotting.root2matplotlib")
 from future.utils import iteritems
 
 zfit = softimport("zfit")
+tf = softimport("tensorflow")
 physt = softimport("physt")
-from uncertainties import unumpy
+from uncertainties import unumpy, ufloat
+
+def addticks(ax):
+    ax.get_yaxis().set_tick_params(direction='in', left=True, right=True)
+    ax.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
+    ax.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
+    ax.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+    ax.minorticks_on()
 
 def LHCbStyle():
     
@@ -300,12 +308,13 @@ def plotVariables(Objs, Folder, FileName, Filled=False, Legend=None, Normalized=
         print("Figure {0} has been created".format(os.path.join('images',Folder,FileName))) 
         plt.close(fig)
         
+        
 def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, nbins=100, plot_residuals=True, logy=False, 
                    chi2_pos=(0.7, 0.5), show_params=False, params_loc=(0.05, 0.95), legend_pos="best", 
                    xlimit=(-999999,999999), ylimit=(-999999,999999), **kwargs ):
                     
-    values = fitresult["values"]
-    errors = fitresult["errors"]
+    values = fitresult.values
+    errors = fitresult.errors
                 
     #compute chisquare
     ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=False, bins=nbins, nfbins=nbins, no_plot=True, args=values, errors=errors);
@@ -420,7 +429,7 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
     f.align_ylabels()
     
 def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, plot_residuals=True, logy=False, 
-                   chi2_pos=(0.7, 0.5), legend_pos="best", xlim=None, ylim=None, 
+                   chi2_pos=(0.7, 0.5), legend_pos="best", xlim=None, ylim=None, chi2=True,
                    units="GeV/c$^{2}$", **kwargs ):
                 
     bounds = xlim if xlim else pdf.space.limit1d 
@@ -430,21 +439,18 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     bin_centers = data_hist.bin_centers
     binwidth = (bounds[1] - bounds[0]) / nbins
     
+    IB = pdf.integrate(bounds)
+
     if pdf.is_extended:
-        N = zfit.run(pdf.integrate(bounds))
+        N = zfit.run(IB)
+        IB = IB/pdf.get_yield() 
     else:
         N = np.sum(datay)
-        
+            
     scale = N * binwidth
     
     ledges = data_hist.bin_left_edges
     redges = data_hist.bin_right_edges
-    
-    nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
-    pdfy = zfit.run(pdf.pdf(bin_centers, norm_range=bounds)) * scale
-    chi2 = chisquare(datay, pdfy, nfree_params)[0]
-    ndof = nbins - 1 + nfree_params
-    chi2ndof = chi2  / ndof
     
     if not ylim:
         if logy:
@@ -469,6 +475,30 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     else:
         f, ax1 = plt.subplots()
         
+    toplot = []
+    toresiduals = []
+    for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
+        if m.is_extended:
+            _frac = (frac / IB) * (m.integrate(bounds) / m.get_yield())
+        else:
+            _frac = (frac / IB) * m.integrate(bounds)
+#        print(i, zfit.run(_frac), zfit.run(frac), zfit.run((frac / IB)), zfit.run(m.integrate(bounds) / pdf.get_yield()))
+#        print(i, zfit.run(_frac), zfit.run(frac))
+        y = zfit.run(m.pdf(x, norm_range=bounds) * _frac * scale)
+        yb = zfit.run(m.pdf(bin_centers, norm_range=bounds) * _frac * scale)
+        toplot.append(y)
+        toresiduals.append(yb)
+
+    
+    pdfy = np.sum(toresiduals, axis=0)
+    
+    if chi2:
+        nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
+        chi2 = chisquare(datay, pdfy, nfree_params)[0]
+        ndof = nbins - 1 + nfree_params
+        chi2ndof = chi2  / ndof 
+        
+        
     # plot data
     if not "data" in description.keys():
         description["data"] = {"color": "black", "label": "Data"}
@@ -483,18 +513,20 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     fmodelcolor = description["fullmodel"].get("color","blue")
     fmodellabel = description["fullmodel"].get("label","Full model")
         
-    _ = ax1.plot(x, zfit.run(pdf.pdf(x, norm_range=bounds)) * scale, color=fmodelcolor, lw=2, label=fmodellabel)
+#    _ = ax1.plot(x, zfit.run(pdf.pdf(x, norm_range=bounds)) * scale, color=fmodelcolor, lw=2, label=fmodellabel)
+    _ = ax1.plot(x, np.sum(toplot, axis=0), color=fmodelcolor, lw=2, label=fmodellabel)
 
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
 
     try:
-        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
+#        for i, (m, frac) in enumerate(zip(pdf.get_models(), pdf.fracs)):
+        for i, (m, y) in enumerate(zip(pdf.get_models(), toplot)):
             if not f"model_{i}" in description.keys():
                 description[f"model_{i}"] = {"color": colors[i], "label": f"model_{i}"}
             _color = description[f"model_{i}"].get("color",colors[i])
             _label = description[f"model_{i}"].get("label",f"model_{i}")
-            y = zfit.run(m.pdf(x, norm_range=bounds) * frac) * scale
+#            y = zfit.run(m.pdf(x, norm_range=bounds) * frac) * scale
             _ = ax1.plot(x, y, ls="--", color=_color, label=_label)
     except AttributeError:
         pass
@@ -515,8 +547,10 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
     ax1.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
     ax1.minorticks_on()
     ax1.legend(loc=legend_pos, fontsize=kwargs.get("fontsize", 12))
-    ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
+    if chi2:
+        ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
     
+        
     if plot_residuals:
         
         if kwargs.get("ax2", None) is not None:
@@ -550,6 +584,44 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         pass
         
     return f, ax1, ax2
+    
+    
+def PullImpact(fitresult, constraints, paramdict=None):
+    
+    uf = lambda p: ufloat(fitresult.params[p]["value"], fitresult.params[p]["minuit_hesse"]["error"])
+    
+    pdict = {}
+    params = []
+    
+    for c in constraints:
+        _params = list(c.params.values())
+        pre_values = zfit.run(c._mu)
+        pre_errors = np.diag(zfit.run(c._covariance))**0.5
+        for i, p in enumerate(_params):
+            pdict[p.name] = dict(pre_value=pre_values[i], value=uf(p),
+                                 pre_error=pre_errors[i])
+            params.append(p.name)
+                                
+    if paramdict is not None:
+        params = list(paramdict.keys())
+        x = list(paramdict.values())
+    else:
+        x = params
+        
+    
+    values = np.array([pdict[p]["value"] for p in params])
+    pre_values = np.array([pdict[p]["pre_value"] for p in params])
+    pre_errors = np.array([pdict[p]["pre_error"] for p in params])
+    pulls = (values - pre_values)/pre_errors
+    
+    print(x)
+    print(pulls)
+    
+    f, ax = plt.subplots()
+    ax.errorbar(x, unumpy.nominal_values(pulls), yerr=unumpy.std_devs(pulls), fmt='o')
+    return f, ax
+                                
+    
         
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
