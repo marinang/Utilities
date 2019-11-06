@@ -47,7 +47,6 @@ def LHCbStyle():
     STYLE['font.family'] = 'sans-serif'
     STYLE['font.serif'] =  'Times New Roman'
     STYLE['font.size'] =   14
-    STYLE['font.weight'] = 500
     STYLE['font.style'] = 'normal'
 
     STYLE['legend.frameon'] = False
@@ -315,23 +314,19 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
                     
     values = fitresult.values
     errors = fitresult.errors
-                
-    #compute chisquare
-    ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=False, bins=nbins, nfbins=nbins, no_plot=True, args=values, errors=errors);
     
-    nfree_params = kwargs.get("nfree_params", len(iminuit.describe(cost_function)))
-    chi2 = chisquare(datay, total_pdf_y, nfree_params)[0]
-    ndof = nbins - 1 + nfree_params
-    print(chi2, ndof)
-    chi2ndof = chi2  / ndof
-    
+    if isinstance(cost_function, probfit.costfunc.BinnedLH):
+        draw = lambda parts: cost_function.draw(minuit=fitresult, parts=parts, nfbins=500, no_plot=True, args=values, errors=errors) 
+    else:
+        draw = lambda parts: cost_function.draw(minuit=fitresult, parts=parts, bins=nbins, nfbins=500, bound=xlimit, no_plot=True, args=values, errors=errors)
+                    
     #plotting
     try:
-        ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=True, bins=nbins, nfbins=500, bound=xlimit, no_plot=True,
-                                                                                                        args=values, errors=errors);
+        ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = draw(True)
+        #cost_function.draw(parts=True, bins=nbins, nfbins=500, bound=xlimit, no_plot=True, args=values, errors=errors);
     except TypeError:
-        ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = cost_function.draw(parts=False, bins=nbins, nfbins=500, bound=xlimit, no_plot=True,
-                                                                                                        args=values, errors=errors);
+        ((data_edges, datay), (errorp, errorm), (total_pdf_x, total_pdf_y), parts) = draw(False)
+        #cost_function.draw(parts=False, bins=nbins, nfbins=500, bound=xlimit, no_plot=True, args=values, errors=errors);
     if logy:
         ymin = ylimit[0] if ylimit[0] != -999999 else 0.01
         ymax = ylimit[1] if ylimit[1] !=  999999 else max(datay)*10
@@ -345,18 +340,24 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
     LHCbStyle()
 
     if plot_residuals:
-        f = plt.figure()
-        gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
-        ax1 = plt.subplot(gs[0])
+        if kwargs.get("ax1", None) is not None:
+            ax1 = kwargs["ax1"]
+            f = None
+        else:
+            f = plt.figure()
+            gs = gridspec.GridSpec(2, 1, height_ratios=[5, 1], hspace = 0.125)
+            ax1 = plt.subplot(gs[0])
     else:
         f, ax1 = plt.subplots()
         
-    ax1.set_xticklabels([])
+    
     ax1.axes.set_ylabel(y_label, ha = "right", y=1)
     ax1.axes.set_xlim((xmin,xmax))
     ax1.axes.set_ylim((ymin,ymax))
     if not plot_residuals:
         ax1.axes.set_xlabel(x_label, ha='right', x=1)
+    else:
+        ax1.set_xticklabels([])
 
     # plot data
     xerr = np.diff(data_edges)/2
@@ -389,8 +390,7 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
     ax1.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
     ax1.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
     ax1.minorticks_on()
-    ax1.legend(loc=legend_pos)
-    ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
+    ax1.legend(loc=legend_pos, fontsize=kwargs.get("fontsize", 12))
     
     if logy:
         ax1.set_yscale("log", nonposy='clip')
@@ -410,7 +410,11 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
     
     if plot_residuals:
 
-        ax2 = plt.subplot(gs[1])
+        if kwargs.get("ax2", None) is not None:
+            ax2 = kwargs["ax2"]
+        else:
+            ax2 = plt.subplot(gs[1])
+        
         ax2.axes.set_ylim((-5,5))
         ax2.axes.set_xlim((xmin, xmax))
         ax2.axes.set_ylabel("Pulls")
@@ -423,9 +427,14 @@ def plotFitResult( cost_function, fitresult, y_label, x_label, description={}, n
         ax2.plot([xmin, xmax], [0, 0], color = "grey", lw=1.5, linestyle = '-.')
         ax2.plot([xmin, xmax], [-2, -2], color = "indianred", lw=1.5, linestyle = '-.')
         ax2.minorticks_on()
-        cost_function.draw_residual(show_errbars=True, errbar_algo='sumw2', norm=True, ax=ax2, mec='Black', mfc='Black', 
-                                    ecolor='Black', markersize=6, bins=nbins, zero_line=False, bound=xlimit, args=values, errors=errors)
         
+        if isinstance(cost_function, probfit.costfunc.BinnedLH):
+            cost_function.draw_residual(minuit=fitresult, show_errbars=True, errbar_algo='sumw2', norm=True, ax=ax2, mec='Black', mfc='Black', 
+                                        ecolor='Black', markersize=6, zero_line=False, bound=xlimit)
+        else:
+            cost_function.draw_residual(show_errbars=True, errbar_algo='sumw2', norm=True, ax=ax2, mec='Black', mfc='Black', 
+                                        ecolor='Black', markersize=6, bins=nbins, zero_line=False, bound=xlimit, args=values, errors=errors)
+                    
     f.align_ylabels()
     
 def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, plot_residuals=True, logy=False, 
@@ -618,7 +627,6 @@ def PullImpact(fitresult, constraints, paramdict=None):
     return f, ax
                                 
     
-        
 def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
     
     LHCbStyle()
@@ -668,5 +676,61 @@ def TwoScales(Hists, Effs, Folder, FileName, Xlabel="", Legend=False, **kwargs):
         os.mkdir( os.path.join('images',Folder))
     fig.savefig(os.path.join('images',Folder,FileName))
     print("Figure {0} has been created".format(os.path.join('images',Folder,FileName)))    
+    
+    
+def plotlimit(poivalues, pvalues, alpha=0.05, CLs=True, ax=None):
+    """
+    plot pvalue scan for different values of a parameter of interest (observed, expected and +/- sigma bands)
+
+    Args:
+        poivalues (List, `np.array`): values of a parameter of interest used to compute p-values
+        pvalues (Dict): CLsb, CLs, expected (+/- sigma bands) p-values
+        alpha (float, default=0.05): significance level
+        CLs (bool, optional): if `True` uses pvalues as $$p_{cls}=p_{null}/p_{alt}=p_{clsb}/p_{clb}$$
+            else as $$p_{clsb} = p_{null}$
+        ax (matplotlib axis, optionnal)
+
+
+    """
+    if ax is None:
+        _, ax = plt.subplots()
+
+    if CLs:
+        cls_clr = "r"
+        clsb_clr = "b"
+    else:
+        cls_clr = "b"
+        clsb_clr = "r"
+
+    ax.plot(poivalues, pvalues["cls"], label="Observed CL$_{s}$", marker=".", color='k',
+            markerfacecolor=cls_clr, markeredgecolor=cls_clr, linewidth=2.0, ms=11)
+
+    ax.plot(poivalues, pvalues["clsb"], label="Observed CL$_{s+b}$", marker=".", color='k',
+            markerfacecolor=clsb_clr, markeredgecolor=clsb_clr, linewidth=2.0, ms=11, linestyle=":")
+
+    ax.plot(poivalues, pvalues["clb"], label="Observed CL$_{b}$", marker=".", color='k', markerfacecolor="k",
+            markeredgecolor="k", linewidth=2.0, ms=11)
+
+    ax.plot(poivalues, pvalues["expected"], label="Expected CL$_{s}-$Median", color='k', linestyle="--",
+            linewidth=1.5, ms=10)
+
+    ax.plot([poivalues[0], poivalues[-1]], [alpha, alpha], color='r', linestyle='-', linewidth=1.5)
+
+    ax.fill_between(poivalues, pvalues["expected"], pvalues["expected_p1"], facecolor="lime",
+                    label="Expected CL$_{s} \\pm 1 \\sigma$")
+
+    ax.fill_between(poivalues, pvalues["expected"], pvalues["expected_m1"], facecolor="lime")
+
+    ax.fill_between(poivalues, pvalues["expected_p1"], pvalues["expected_p2"], facecolor="yellow",
+                    label="Expected CL$_{s} \\pm 2 \\sigma$")
+
+    ax.fill_between(poivalues, pvalues["expected_m1"], pvalues["expected_m2"], facecolor="yellow")
+
+    ax.set_ylim(-0.01, 1.1)
+    ax.set_ylabel("p-value", fontsize=14, ha = "right", y=1)
+    ax.set_xlabel("parameter of interest", fontsize=14, ha = "right", x=1)
+    ax.legend(loc="best", fontsize=14)
+
+    return ax
     
 
