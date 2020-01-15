@@ -73,7 +73,7 @@ class tchain(object):
         
     def tofile(self, filename, treename = ""):
         
-        f = ROOT.TFile(filename, "recreate")
+        f = ROOT.TFile.Open(filename, "recreate")
         
         chain = self.chain.CopyTree("")
                 
@@ -100,6 +100,17 @@ class ttree(object):
     def __init__(self, tree):
         
         self.tree = tree
+        
+    @property
+    def nentries(self):
+        return self.tree.GetEntries()
+        
+    @property
+    def nevents(self):
+        return self.nevents
+        
+    def __len__(self):
+        return self.nentries
         
     def tofile(self, filename, treename = ""):
         

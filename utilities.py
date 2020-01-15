@@ -96,7 +96,7 @@ def dicttoarray( arraydict ):
     
     """Convert a dictionnary into a structured array."""
     
-    def jaggedtoarray( jaggedarray ):
+    def jaggedtoarray(jaggedarray):
         
         array = np.empty(len(jaggedarray), np.object)
         for index,a in enumerate(jaggedarray):
@@ -118,7 +118,7 @@ def dicttoarray( arraydict ):
             
         formats.append(_dtype)
         
-    if sys.version_info[0] > 2:
+    if sys.version_info[0] > 2 and all(isinstance(n, bytes) for n in names):
         names = [n.decode() for n in names]
     
     dtypes = {'names': names, 'formats': formats}
@@ -128,7 +128,7 @@ def dicttoarray( arraydict ):
         
     for k in arraydict.keys():
         
-        if sys.version_info[0] > 2:
+        if sys.version_info[0] > 2 and isinstance(k, bytes):
             k_new_array = k.decode()
         else:
             k_new_array = k

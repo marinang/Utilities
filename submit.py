@@ -12,7 +12,10 @@ import subprocess as sub
 import random
 from datetime import datetime
 import time
-import commands
+import getpass
+from Utilities import red
+from random import randint
+
 
 now = datetime.now()
 random.seed(now.day)
@@ -42,71 +45,29 @@ class AttrDict(dict):
                    "m_cpu":     4000,
                    "m_time":    20,
                    "exclude": 0,
-                   "m_nodes2exclude": [],
+                   "nodes2exclude": [],
                    "infiles": "",
-                   "express":  False }
+                   "express":  False, 
+                   "options": {}}
                    
         for d in list(default.keys()):
             if d not in self.__dict__.keys():
                 self[d] = default[d]
-
-#### Routines for intercative lxplus submission ####
-
-def getRdmNode() :
-
-    node = 'lxplus{0:04d}'.format(random.randint(1,500))
-    out = sub.check_output("ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no %s 'ls $HOME/.tcshrc' 2> /dev/null | wc -l" % node, shell = True)
-    return [node, out]
-
-def getAliveNode() :
-    
-    node, out = getRdmNode()
-    while int(out) != 1 :
-        node, out = getRdmNode()
-    return [node, out]
-
-def LaunchInteractive( Dirname ):
-
-    print("Searching for an alive node...")
-    node, out = getAliveNode()
-    print("Submitting to ", node)
-    
-    command  = 'ssh -o StrictHostKeyChecking=no %s "cd ' % node + dirname  + '; chmod +x run.sh ; ./run.sh" &'
-    command += ' ; echo "Start: {0}"'.format(datetime.now()) 
-
-    return command 
-    
-def PrepareLxplusJob( Options, Dirname ):
-    
-    #prepare lxplus batch job submission
-    
-    command = "bsub -R 'pool>30000' -o {dir}/out -e {dir}/err \
-            -q {queue} {mail} -J {jname} < {dir}/run.sh".format(
-                dir=Dirname,queue=Options.queue,
-                mail=Options.mail,jname=Options.subdir+Options.jobname)
-    
-    return command
-
-    
+        
 def IsSlurm():
     
     # Check if there is a slurm batch system
     
-    exitcode = commands.getstatusoutput("squeue")[0]
-        
-    if exitcode == 0:
-        return True
-    else:
+    try:
+        P = sub.Popen(["squeue"], stdout=sub.PIPE)
+        _, _ = P.communicate()
+    except OSError:
         return False
-    
-#    try:
-#        sub.Popen(['squeue'], stdout=sub.PIPE)
-#    except OSError:
-#        return False
-#    else:
-#        return True
+    else:
+        return True
         
-def PrepareSlurmJob( Options, Dirname ):
+        
+def PrepareSlurmJob( options, Dirname ):
     
     #prepare slurm batch job submission
     
@@ -132,17 +93,18 @@ def PrepareSlurmJob( Options, Dirname ):
     fo.write("#!/bin/bash -fx\n")                       
     fo.write("#SBATCH -o " + Dirname + "/out\n")
     fo.write("#SBATCH -e " + Dirname + "/err\n")
-    fo.write("#SBATCH -J " + Options.subdir + Options.jobname + "\n")
-    fo.write("#SBATCH --mem-per-cpu "+str(Options.m_cpu)+"\n")
+    fo.write("#SBATCH -J " + options.subdir + options.jobname + "\n")
+    fo.write("#SBATCH --mem-per-cpu "+str(options.m_cpu)+"\n")
+#    fo.write("#SBATCH --mem 5000\n")
     fo.write("#SBATCH -n 1\n")
     fo.write("#SBATCH -p batch\n")
-    fo.write("#SBATCH -t {0}:00:00\n".format(Options.m_time))
+    fo.write("#SBATCH -t {0}:00:00\n".format(options.m_time))
     
-    if Options.express:
+    if options.express:
        fo.write("#SBATCH --qos=express\n")
     
-    exclude = Options.exclude
-    nodestoexclude = Options.m_nodes2exclude
+    exclude = options.exclude
+    nodestoexclude = options.nodes2exclude
     
     if exclude != 0 or len(nodestoexclude) > 0:        
         now = datetime.now()
@@ -185,40 +147,47 @@ def PrepareSlurmJob( Options, Dirname ):
     command = "sbatch "+Dirname+"/run.sh"
     return command
         
-def SendCommand( command ):
+def sendcommand(command, sendoptions):
+    
+    SUBMIT = False
+    while SUBMIT is False:
+        SUBMIT = subcondition(sendoptions)
+        if not SUBMIT:
+            time.sleep(randint(0, 5) * 60)
     
     if sys.version_info[0] > 2:
         out = sub.check_output( command, shell = True, encoding='utf8')
     else:
         out = sub.check_output( command, shell = True)
-    
-#    
-#    output=check_output("dmesg | grep hda", shell=True)
-#    
-#    OK = False
-#    
-#    while OK == False:
-#            
-#        try:
-#    
-#            if sys.version_info[0] > 2:
-#                process = sub.Popen( command, shell = True, stdout=sub.PIPE, encoding='utf8')
-#            else:
-#                process = sub.Popen( command, shell = True, stdout=sub.PIPE)
-#            
-#        except OSError, err:
-#        
-#            print("Wait a bit, Resource temporarily unavailable")
-#            time.sleep(15)
-#            continue
-#            
-#        OK = True
-#                
-#    time.sleep(0.03)    
-#    process.wait()
-#    out, _ = process.communicate()
-#            
+
     return out
+    
+def subcondition(options):
+    
+    user = getpass.getuser()
+        
+    #additionnal submission conditions for SLURM batch system 
+                        
+    Njobs_user     = int( os.popen( "echo $(squeue  | grep -c '{0}')".format(user)           ).read() )
+    Npendjobs_user = int( os.popen( "echo $(squeue -u {0} | grep -c 'PD')".format(user)      ).read() )
+    
+    now = datetime.now()
+    hour = now.hour
+    
+    #conditions
+    jobs_user     = options.get('nuserjobs', 2999) <= Njobs_user        
+    pendjobs_user = options.get('npendingjobs', 2999) <= Npendjobs_user
+            
+    if jobs_user:
+        print( red("You have already submitted {0} jobs. Wait for submission!".format(Njobs_user)) )
+        Submission = False
+    elif pendjobs_user:
+        print( red("You have already {0} jobs pending. Wait for submission!".format(Npendjobs_user)) )
+        Submission = False
+    elif not (jobs_user and pendjobs_user):
+        Submission = True
+                
+    return Submission
     
 def main(opts):
     
@@ -233,9 +202,13 @@ def main(opts):
         execname = commands[0].replace('./','')
         args = commands[1:]
     elif "lb-run" in commands[0]:
-        exe      = "{0} {1} {2}".format(commands[0],commands[1],commands[2])
-        execname = commands[3]
-        args = commands[4:]
+        if "-c" in commands[1]:
+            endcommand = 5
+        else:
+            endcommand = 3
+        exe = " ".join(commands[0:endcommand])
+        execname = commands[endcommand]
+        args = commands[endcommand+1:]
     elif len(commands) > 1 : 
         execname = commands[1]
         exe      = commands[0]
@@ -308,7 +281,7 @@ def main(opts):
     os.system( "chmod 755 " + dirname + "/run.sh" )
     
     ########################################################################################
-    ## Run executable in local, interactive or batch mode
+    ## Run executable in local or batch mode
     ########################################################################################
     
     if(opts.subdir != "") :
@@ -318,29 +291,16 @@ def main(opts):
         print("Running local")
         command  = "cd " + dirname
         command += dirname + "/run.sh &"
-            
-    elif "lxplus" in os.getenv("HOSTNAME") :  ## Batch for lxplus
-        if opts.interactive :
-            command = LaunchInteractive(dirname)
-        else :
-            command = PrepareLxplusJob(opts, dirname)
-            
-        try:
-            ID = int( out.split(" ")[1].replace(">","").replace("<","") )
-            print( "Submitted batch job {0}".format(ID) )
-            return ID
-        except IndexError:
-            return None
-            
+                        
     elif IsSlurm():
         command = PrepareSlurmJob(opts, dirname)
-        out = SendCommand( command )
+        out = sendcommand(command, opts.options)
         ID = int( out.split(" ")[-1] )
         print( "Submitted batch job {0}".format(ID) )
         return ID
      
     else :
-        print("Can run in batch mode only on lxplus or on a slurm batch system. Go there or run with '--local'")
+        print("Can run in batch mode on a slurm batch system only. Go there or run with '--local'")
      
 if __name__ == "__main__" :
         
@@ -376,7 +336,7 @@ if __name__ == "__main__" :
         help="Maximum time of the job in hours (Slurm).")
     parser.add_argument("-exclude", default=0, dest="exclude", type=int,
         help="Number of nodes to exclude (Slurm).")
-    parser.add_argument("-nodes2exclude", default=[], dest="m_nodes2exclude", type=str,
+    parser.add_argument("-nodes2exclude", default=[], dest="nodes2exclude", type=str,
         help="Nodes to exclude (Slurm).", nargs="+")
     parser.add_argument("-in", dest="infiles", default = "", help="Files to copy over")
     parser.add_argument("--express", dest="express",  action="store_true",
