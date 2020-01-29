@@ -30,6 +30,8 @@ tf = softimport("tensorflow")
 physt = softimport("physt")
 from uncertainties import unumpy, ufloat
 
+import mplhep
+
 def addticks(ax):
     ax.get_yaxis().set_tick_params(direction='in', left=True, right=True)
     ax.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
@@ -442,10 +444,14 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
                    units="GeV/c$^{2}$", **kwargs ):
                 
     bounds = xlim if xlim else pdf.space.limit1d 
-    data_hist = physt.h1(data, nbins, range=bounds)
-    datay = data_hist.frequencies
-    errory = data_hist.errors
-    bin_centers = data_hist.bin_centers
+    
+    datay, bin_edges = np.histogram(data, bins=nbins, range=bounds)
+    errory = np.sqrt(datay)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
+#    data_hist = physt.h1(data, nbins, range=bounds)
+#    datay = data_hist.frequencies
+#    errory = data_hist.errors
+#    bin_centers = data_hist.bin_centers
     binwidth = (bounds[1] - bounds[0]) / nbins
     
     IB = pdf.integrate(bounds)
@@ -457,9 +463,6 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         N = np.sum(datay)
             
     scale = N * binwidth
-    
-    ledges = data_hist.bin_left_edges
-    redges = data_hist.bin_right_edges
     
     if not ylim:
         if logy:
@@ -489,8 +492,10 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         description["data"] = {"color": "black", "label": "Data"}
     datacolor = description["data"].get("color","black")
     datalabel = description["data"].get("label","Data")
-    data_hist.plot(ax=ax1, kind="scatter", color=datacolor, errors=True, yscale=yscale,
-                   label=datalabel, s=6, xlabel=None)
+    #data_hist.plot(ax=ax1, kind="scatter", color=datacolor, errors=True, yscale=yscale,
+    #               label=datalabel, s=6, xlabel=None)
+    mplhep.histplot(datay, bins=bin_edges, label=datalabel, ax=ax1, histtype="errorbar", 
+                    color="black", markersize=4, yerr=True, elinewidth=1.5)
     
     # plot model
     if not "fullmodel" in description.keys():
@@ -530,29 +535,26 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         _ = ax1.plot(x, zfit.run(pdf.pdf(x, norm_range=bounds)) * scale, color=fmodelcolor, lw=2, label=fmodellabel)
 
 
-    if chi2:
-        nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
-        chi2 = chisquare(datay, pdfy, nfree_params)[0]
-        ndof = nbins - 1 + nfree_params
-        chi2ndof = chi2  / ndof 
-        
     if y_label is None:
         y_label=f"Candidates/({binwidth:.2f} {units})"
         
-    ax1.set_xticklabels([])
     ax1.axes.set_ylabel(y_label, ha = "right", y=1)
     ax1.axes.set_xlim(bounds)
     ax1.axes.set_ylim(ylim)
     if not plot_residuals:
         ax1.axes.set_xlabel(x_label, ha='right', x=1)
+    else:
+        ax1.set_xticklabels([])
         
-    ax1.get_yaxis().set_tick_params(direction='in', left=True, right=True)
-    ax1.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
-    ax1.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
-    ax1.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+    addticks(ax1)
     ax1.minorticks_on()
     ax1.legend(loc=legend_pos, fontsize=kwargs.get("fontsize", 12))
+    
     if chi2:
+        nfree_params = kwargs.get("nfree_params", len(pdf.get_dependents()))
+        chi2 = chisquare(datay, pdfy, nfree_params)[0]
+        ndof = nbins - 1 + nfree_params
+        chi2ndof = chi2  / ndof 
         ax1.text(chi2_pos[0], chi2_pos[1], r'$\chi^{2}$/ndof = ' + f"{chi2ndof:.2f}", transform = ax1.transAxes )
     
         
@@ -567,10 +569,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         ax2.axes.set_xlim(bounds)
         ax2.axes.set_ylabel("Pulls")
         ax2.axes.set_xlabel(x_label, ha ='right', x=1)
-        ax2.get_yaxis().set_tick_params(direction='in', left=True, right=True)
-        ax2.get_xaxis().set_tick_params(direction='in', bottom=True, top=True)
-        ax2.get_yaxis().set_tick_params(direction='in', which='minor', left=True, right=True)
-        ax2.get_xaxis().set_tick_params(direction='in', which='minor', bottom=True, top=True)
+        addticks(ax2)
         ax2.plot(list(bounds), [2, 2], color = "indianred", lw=1.5, linestyle = '-.')
         ax2.plot(list(bounds), [0, 0], color = "grey", lw=1.5, linestyle = '-.')
         ax2.plot(list(bounds), [-2, -2], color = "indianred", lw=1.5, linestyle = '-.')
@@ -579,7 +578,7 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         errory = np.where(datay == 0., np.ones(errory.shape), errory)
         pully = (datay - pdfy) / errory
         ax2.errorbar(bin_centers, unumpy.nominal_values(pully), yerr=unumpy.std_devs(pully), fmt='.', ecolor='Black',
-                     markersize=6, color='Black')
+                     markersize=4, color='Black', elinewidth=1.5)
     else:
         ax2 = None
     
@@ -587,6 +586,9 @@ def plotZfitResult(pdf, data, x_label, y_label=None, description={}, nbins=100, 
         f.align_ylabels()
     except (UnboundLocalError, AttributeError):
         pass
+        
+    if logy:
+        ax1.set_yscale("log", nonposy='clip')
         
     return f, ax1, ax2
     
